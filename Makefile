@@ -10,7 +10,7 @@ lint:
 	# Check the main binary
 	shellcheck -x bin/checkit
 	# Check all library files in src
-	find lib -name "*.bash" -exec shellcheck {} +
+	find lib -name "*.sh" -exec shellcheck {} +
 
 # Run Tests
 test:
