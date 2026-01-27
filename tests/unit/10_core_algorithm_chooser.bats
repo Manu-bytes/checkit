@@ -2,10 +2,6 @@
 
 load '../test_helper'
 
-# Carga (mock) del módulo bajo prueba
-# Nota: Como estamos en TDD, el archivo lib/core/algorithm_chooser.bash
-# aún no existe o está vacío, por lo que sourcearlo ahora fallará o no hará nada
-# hasta que lo creemos. Para este test inicial, definiremos el path.
 setup() {
   # Path to the unit under test
   source "$PROJECT_ROOT/lib/constants.sh"
@@ -49,7 +45,7 @@ setup() {
 }
 
 @test "Core: identify_algorithm detects SHA-256 by length (64 chars)" {
-  # Simulación de un hash SHA-256 válido
+  # Simulation of a valid SHA-256 hash
   local input_hash="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 
   run core::identify_algorithm "$input_hash"
@@ -69,7 +65,7 @@ setup() {
 }
 
 @test "Core: identify_algorithm detects SHA-512 by length (128 chars)" {
-  # Un hash SHA-512 dummy de 128 caracteres
+  # A 128-character dummy SHA-512 hash
   local input_hash="cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e"
 
   run core::identify_algorithm "$input_hash"
