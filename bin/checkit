@@ -1,1 +1,52 @@
 #!/usr/bin/env bash
+
+# Resolve project root to locate libraries relative to this script.
+# Assuming structure: /path/to/project/bin/checkit
+# Libraries at:       /path/to/project/lib/
+BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+PROJECT_ROOT="$(dirname "$BIN_DIR")"
+
+# Import libraries
+# shellcheck source=lib/constants.sh
+source "$PROJECT_ROOT/lib/constants.sh"
+# shellcheck source=lib/core/algorithm_chooser.sh
+source "$PROJECT_ROOT/lib/core/algorithm_chooser.sh"
+# shellcheck source=lib/adapters/coreutils.sh
+source "$PROJECT_ROOT/lib/adapters/coreutils.sh"
+
+main() {
+  local file="${1:-}"
+  local hash="${2:-}"
+
+  # 1. Basic Argument Validation
+  if [[ -z "$file" || -z "$hash" ]]; then
+    echo "Usage: checkit <file> <hash>"
+    exit "$EX_OPERATIONAL_ERROR"
+  fi
+
+  # 2. Identify Algorithm (Heuristic)
+  local algo
+  # Capture output (algo name) and check exit code
+  if ! algo=$(core::identify_algorithm "$hash"); then
+    echo "Error: Could not identify hash algorithm (length: ${#hash})."
+    exit "$EX_OPERATIONAL_ERROR"
+  fi
+
+  # 3. Verify Integrity
+  # We capture the exit code of the adapter to propagate it correctly
+  coreutils::verify "$algo" "$file" "$hash"
+  local status=$?
+
+  if [[ "$status" -eq "$EX_SUCCESS" ]]; then
+    echo "[OK] $file: Verified ($algo)"
+    exit "$EX_SUCCESS"
+  elif [[ "$status" -eq "$EX_INTEGRITY_FAIL" ]]; then
+    echo "[FAILED] $file: Checksum mismatch ($algo)"
+    exit "$EX_INTEGRITY_FAIL"
+  else
+    echo "[ERROR] System error during verification"
+    exit "$status"
+  fi
+}
+
+main "$@"
