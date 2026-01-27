@@ -13,40 +13,73 @@ source "$PROJECT_ROOT/lib/constants.sh"
 source "$PROJECT_ROOT/lib/core/algorithm_chooser.sh"
 # shellcheck source=lib/adapters/coreutils.sh
 source "$PROJECT_ROOT/lib/adapters/coreutils.sh"
+# shellcheck source=lib/cli/args.sh
+source "$PROJECT_ROOT/lib/cli/args.sh"
 
-main() {
-  local file="${1:-}"
-  local hash="${2:-}"
+do_verify_string() {
+  local file="$1"
+  local hash="$2"
 
-  # 1. Basic Argument Validation
-  if [[ -z "$file" || -z "$hash" ]]; then
-    echo "Usage: checkit <file> <hash>"
-    exit "$EX_OPERATIONAL_ERROR"
-  fi
-
-  # 2. Identify Algorithm (Heuristic)
+  # 1. Identify Algorithm (Heuristic)
   local algo
-  # Capture output (algo name) and check exit code
   if ! algo=$(core::identify_algorithm "$hash"); then
     echo "Error: Could not identify hash algorithm (length: ${#hash})."
-    exit "$EX_OPERATIONAL_ERROR"
+    return "$EX_OPERATIONAL_ERROR"
   fi
 
-  # 3. Verify Integrity
-  # We capture the exit code of the adapter to propagate it correctly
+  # 2. Verify Integrity
   coreutils::verify "$algo" "$file" "$hash"
   local status=$?
 
+  # 3. Output Handling
+  # We respect global flags such as --quiet or --status if they are implemented in the future,
+  # but we maintain the standard output to pass the current integration tests.
   if [[ "$status" -eq "$EX_SUCCESS" ]]; then
-    echo "[OK] $file: Verified ($algo)"
-    exit "$EX_SUCCESS"
+    if [[ "$__CLI_QUIET" == "false" && "$__CLI_STATUS" == "false" ]]; then
+      echo "[OK] $file: Verified ($algo)"
+    fi
+    return "$EX_SUCCESS"
   elif [[ "$status" -eq "$EX_INTEGRITY_FAIL" ]]; then
-    echo "[FAILED] $file: Checksum mismatch ($algo)"
-    exit "$EX_INTEGRITY_FAIL"
+    if [[ "$__CLI_STATUS" == "false" ]]; then
+      echo "[FAILED] $file: Checksum mismatch ($algo)"
+    fi
+    return "$EX_INTEGRITY_FAIL"
   else
     echo "[ERROR] System error during verification"
-    exit "$status"
+    return "$status"
   fi
+}
+
+main() {
+  # 1. Parse Arguments
+  # This fills the global variables: $__CLI_MODE, $__CLI_FILE, $__CLI_HASH, etc.
+  if ! cli::parse_args "$@"; then
+    # The parser already prints the error or help, so we just exit.
+    exit "$EX_OPERATIONAL_ERROR"
+  fi
+
+  # 2. Mode Dispatcher
+  case "$__CLI_MODE" in
+  "verify_string")
+    # Backward compatibility mode (File + Explicit Hash)
+    do_verify_string "$__CLI_FILE" "$__CLI_HASH"
+    exit "$?"
+    ;;
+  "check")
+    # Placeholder for Check Mode (-c)
+    echo "Feature 'Check Mode' (-c) is coming soon."
+    exit "$EX_OPERATIONAL_ERROR"
+    ;;
+  "create")
+    # Placeholder for Generation Mode (-n / implicit)
+    echo "Feature 'Create Mode' is coming soon."
+    exit "$EX_OPERATIONAL_ERROR"
+    ;;
+  *)
+    # If it is help or version, parse_args returned success but did not set the execution mode.
+    exit "$EX_SUCCESS"
+    ;;
+  esac
 }
 
 main "$@"
