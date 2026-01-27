@@ -1,5 +1,6 @@
 #!/usr/bin/env bats
 
+# shellcheck disable=SC2329
 load '../test_helper'
 
 setup() {
