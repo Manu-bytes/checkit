@@ -13,7 +13,14 @@ lint:
 	find lib -name "*.sh" -exec shellcheck {} +
 
 # Run Tests
-test:
-	@echo "Running test suite..."
-	@$(BATS_BIN) --recursive tests/unit tests/integration
+unit-test:
+	@echo "Running Unit Tests..."
+	@$(BATS_BIN) --recursive tests/unit
+
+integration-test:
+	@echo "Running Integration Tests..."
+	@$(BATS_BIN) --recursive tests/integration
+
+test: unit-test integration-test
+	@echo "Test suite completed"
 
