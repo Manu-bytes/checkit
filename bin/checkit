@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
 
-# Resolve project root to locate libraries relative to this script.
-# Assuming structure: /path/to/project/bin/checkit
-# Libraries at:       /path/to/project/lib/
+# Resolves project root to locate libraries relative to this script.
 BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 PROJECT_ROOT="$(dirname "$BIN_DIR")"
 
-# Import libraries
+# Library imports
 # shellcheck source=lib/constants.sh
 source "$PROJECT_ROOT/lib/constants.sh"
 # shellcheck source=lib/core/algorithm_chooser.sh
@@ -15,25 +13,30 @@ source "$PROJECT_ROOT/lib/core/algorithm_chooser.sh"
 source "$PROJECT_ROOT/lib/adapters/coreutils.sh"
 # shellcheck source=lib/cli/args.sh
 source "$PROJECT_ROOT/lib/cli/args.sh"
+# shellcheck source=lib/utils/clipboard.sh
+source "$PROJECT_ROOT/lib/utils/clipboard.sh"
 
+# do_verify_string
+# Encapsulates logic for the legacy verify string mode.
+# Handles case: checkit <file> <hash>
 do_verify_string() {
   local file="$1"
   local hash="$2"
 
-  # 1. Identify Algorithm (Heuristic)
+  # 1. Algorithm Identification (Heuristic)
   local algo
   if ! algo=$(core::identify_algorithm "$hash"); then
     echo "Error: Could not identify hash algorithm (length: ${#hash})."
     return "$EX_OPERATIONAL_ERROR"
   fi
 
-  # 2. Verify Integrity
+  # 2. Integrity Verification
   coreutils::verify "$algo" "$file" "$hash"
   local status=$?
 
   # 3. Output Handling
-  # We respect global flags such as --quiet or --status if they are implemented in the future,
-  # but we maintain the standard output to pass the current integration tests.
+  # Respects global flags like --quiet or --status if implemented.
+  # Maintains standard output for current integration tests.
   if [[ "$status" -eq "$EX_SUCCESS" ]]; then
     if [[ "$__CLI_QUIET" == "false" && "$__CLI_STATUS" == "false" ]]; then
       echo "[OK] $file: Verified ($algo)"
@@ -51,10 +54,10 @@ do_verify_string() {
 }
 
 main() {
-  # 1. Parse Arguments
-  # This fills the global variables: $__CLI_MODE, $__CLI_FILE, $__CLI_HASH, etc.
+  # 1. Argument Parsing
+  # Populates global variables: $__CLI_MODE, $__CLI_FILE, $__CLI_HASH, etc.
   if ! cli::parse_args "$@"; then
-    # The parser already prints the error or help, so we just exit.
+    # Parser prints error/help message; exit immediately.
     exit "$EX_OPERATIONAL_ERROR"
   fi
 
@@ -68,18 +71,18 @@ main() {
   "check")
     local sumfile="${__CLI_FILES[0]}"
 
-    # 1. Detection algorithm
+    # 1. Algorithm Detection
     local algo
     if ! algo=$(core::identify_from_file "$sumfile"); then
       echo "Error: Could not identify algorithm from file: $sumfile"
       exit "$EX_OPERATIONAL_ERROR"
     fi
 
-    # 2. Check list
+    # 2. List Verification
     coreutils::check_list "$algo" "$sumfile"
     local status=$?
 
-    # 3. Output
+    # 3. Output Handling
     if [[ "$status" -eq "$EX_SUCCESS" ]]; then
       if [[ "$__CLI_QUIET" == "false" && "$__CLI_STATUS" == "false" ]]; then
         echo "[OK] Batch verification passed ($algo)"
@@ -96,18 +99,36 @@ main() {
     fi
     ;;
   "create")
-    # Placeholder for Generation Mode (-n / implicit)
-    # We iterate over all files passed as arguments
-    # (checkit file1 file2 ...)
+    # Generation Mode (-n / implicit)
+    # Iterates over all files passed as arguments
     local has_error=false
+    local output_buffer=""
 
     for file in "${__CLI_FILES[@]}"; do
-      # We use the algorithm defined in CLI (default: sha256)
-      if ! coreutils::calculate "$__CLI_ALGO" "$file"; then
+      # Captures output for buffer
+      if hash_line=$(coreutils::calculate "$__CLI_ALGO" "$file"); then
+        echo "$hash_line" # Displays to user
+
+        # Accumulates in buffer for clipboard
+        if [[ -n "$output_buffer" ]]; then
+          output_buffer+=$'\n'
+        fi
+        output_buffer+="$hash_line"
+      else
         echo "Error: Failed to calculate hash for $file" >&2
         has_error=true
       fi
     done
+
+    # Clipboard Logic
+    if [[ "$__CLI_COPY" == "true" && -n "$output_buffer" ]]; then
+      if utils::copy_to_clipboard "$output_buffer"; then
+        # Optional feedback message (stderr)
+        echo "   [Context] Copied to clipboard." >&2
+      else
+        echo "   [Warning] Failed to copy (no clipboard tool found)." >&2
+      fi
+    fi
 
     if [[ "$has_error" == "true" ]]; then
       exit "$EX_OPERATIONAL_ERROR"
@@ -116,7 +137,7 @@ main() {
     exit "$EX_SUCCESS"
     ;;
   *)
-    # If it is help or version, parse_args returned success but did not set the execution mode.
+    # If help or version, parse_args returns success but sets no mode.
     exit "$EX_SUCCESS"
     ;;
   esac
