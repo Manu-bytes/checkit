@@ -48,3 +48,36 @@ core::identify_algorithm() {
     ;;
   esac
 }
+
+# core::identify_from_file
+# Reads the first line of a checksums file (sumfile), extracts the hash,
+# and determines the algorithm used.
+#
+# Arguments:
+#   $1 - Path to the checksums file
+#
+# Returns:
+#   Output: Name of the algorithm (e.g., sha256)
+#   Exit Code: EX_SUCCESS or error.
+
+core::identify_from_file() {
+  local file="$1"
+
+  # 1. Validate existence
+  if [[ ! -f "$file" ]]; then
+    return "$EX_OPERATIONAL_ERROR"
+  fi
+
+  # 2. Read the first line
+  local first_line
+  read -r first_line <"$file"
+
+  # 3. Extract candidate to Hash
+  # We assume standard GNU format: “HASH filename”
+  # awk ‘{print $1}’ takes the first word of the line.
+  local hash_candidate
+  hash_candidate=$(echo "$first_line" | awk '{print $1}')
+
+  # 4. Delegate identification to existing logic
+  core::identify_algorithm "$hash_candidate"
+}

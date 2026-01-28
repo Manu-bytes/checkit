@@ -38,3 +38,29 @@ coreutils::verify() {
     return "$EX_INTEGRITY_FAIL"
   fi
 }
+
+# coreutils::check_list
+# Checks a list of checksums from an existing file.
+#
+# Arguments:
+#   $1 - Algorithm (sha256, md5, etc.)
+#   $2 - Path to the checksum file (.txt, .md5, etc.)
+coreutils::check_list() {
+  local algo="$1"
+  local sumfile="$2"
+  local cmd="${algo}sum"
+
+  if [[ ! -f "$sumfile" ]]; then
+    return "$EX_OPERATIONAL_ERROR"
+  fi
+
+  # Run: sha256sum -c sumfile.txt
+  # We redirect stderr and stdout to null so we can handle the output ourselves,
+  # unless we want to see the native output.
+  # For consistency with verify_string, we silence it and use the exit code.
+  if "$cmd" -c "$sumfile" >/dev/null 2>&1; then
+    return "$EX_SUCCESS"
+  else
+    return "$EX_INTEGRITY_FAIL"
+  fi
+}
