@@ -33,7 +33,7 @@ setup() {
 
   run coreutils::verify "$algo" "$file" "$hash"
 
-  rm "$file" # clean
+  rm "$file"
 
   assert_success
 }
@@ -58,6 +58,36 @@ setup() {
   local file="non_existent_file"
 
   run coreutils::verify "$algo" "$file" "any_hash"
+
+  assert_failure "$EX_OPERATIONAL_ERROR"
+}
+
+# --- Tests for calculate (Generation) ---
+@test "Adapter: coreutils::calculate generates hash for file" {
+  # Sha256sum mock for generation
+  function sha256sum() {
+    # Standard behavior: prints "hash filename"
+    echo "mock_generated_hash  $1"
+    return 0
+  }
+  export -f sha256sum
+
+  local file="test_gen.txt"
+  touch "$file"
+  local algo="sha256"
+
+  run coreutils::calculate "$algo" "$file"
+  rm "$file"
+
+  assert_success
+  assert_output "mock_generated_hash  test_gen.txt"
+}
+
+@test "Adapter: coreutils::calculate handles missing file" {
+  local file="ghost.txt"
+  local algo="sha256"
+
+  run coreutils::calculate "$algo" "$file"
 
   assert_failure "$EX_OPERATIONAL_ERROR"
 }
