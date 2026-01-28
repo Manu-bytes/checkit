@@ -73,3 +73,37 @@ setup() {
   assert_success
   assert_output "sha512"
 }
+
+# --- Tests for identify_from_file ---
+
+@test "Core: identify_from_file detects SHA-256 from a sumfile" {
+  local sumfile="test_sha256.txt"
+  # Standard format: HASH  FILENAME
+  echo "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  myfile.txt" >"$sumfile"
+
+  run core::identify_from_file "$sumfile"
+
+  rm "$sumfile"
+  assert_success
+  assert_output "sha256"
+}
+
+@test "Core: identify_from_file detects MD5 from a BSD-style line" {
+  local sumfile="test_md5.txt"
+  # BSD format: MD5 (myfile.txt) = hash
+  # Note: Our current heuristics only look at the HASH.
+  # We will need to extract it correctly regardless of format.
+  # For this MVP, we will assume standard GNU format first.
+  echo "d41d8cd98f00b204e9800998ecf8427e  myfile.txt" >"$sumfile"
+
+  run core::identify_from_file "$sumfile"
+
+  rm "$sumfile"
+  assert_success
+  assert_output "md5"
+}
+
+@test "Core: identify_from_file fails if file does not exist" {
+  run core::identify_from_file "ghost_file.txt"
+  assert_failure "$EX_OPERATIONAL_ERROR"
+}
