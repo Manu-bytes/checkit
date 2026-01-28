@@ -64,3 +64,31 @@ coreutils::check_list() {
     return "$EX_INTEGRITY_FAIL"
   fi
 }
+
+# coreutils::calculate
+# Calculates the hash of a file.
+#
+# Arguments:
+#   $1 - Algorithm (sha256, md5, etc.)
+#   $2 - Path to the file
+#
+# Returns:
+#   Output: “HASH FILENAME” (GNU standard)
+#   Exit Code: EX_SUCCESS or error.
+coreutils::calculate() {
+  local algo="$1"
+  local file="$2"
+  local cmd="${algo}sum"
+
+  if [[ ! -f "$file" ]]; then
+    return "$EX_OPERATIONAL_ERROR"
+  fi
+
+  # We execute the command.
+  # We do not silence stdout because we want the user to see the hash.
+  if "$cmd" "$file"; then
+    return "$EX_SUCCESS"
+  else
+    return "$EX_OPERATIONAL_ERROR"
+  fi
+}

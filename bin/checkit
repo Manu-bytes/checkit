@@ -97,8 +97,23 @@ main() {
     ;;
   "create")
     # Placeholder for Generation Mode (-n / implicit)
-    echo "Feature 'Create Mode' is coming soon."
-    exit "$EX_OPERATIONAL_ERROR"
+    # We iterate over all files passed as arguments
+    # (checkit file1 file2 ...)
+    local has_error=false
+
+    for file in "${__CLI_FILES[@]}"; do
+      # We use the algorithm defined in CLI (default: sha256)
+      if ! coreutils::calculate "$__CLI_ALGO" "$file"; then
+        echo "Error: Failed to calculate hash for $file" >&2
+        has_error=true
+      fi
+    done
+
+    if [[ "$has_error" == "true" ]]; then
+      exit "$EX_OPERATIONAL_ERROR"
+    fi
+
+    exit "$EX_SUCCESS"
     ;;
   *)
     # If it is help or version, parse_args returned success but did not set the execution mode.
