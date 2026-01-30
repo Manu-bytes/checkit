@@ -17,13 +17,13 @@ source "$PROJECT_ROOT/lib/cli/args.sh"
 source "$PROJECT_ROOT/lib/utils/clipboard.sh"
 
 # do_verify_string
-# Encapsulates logic for the legacy verify string mode.
+# Verification logic for direct file and hash arguments.
 # Handles case: checkit <file> <hash>
 do_verify_string() {
   local file="$1"
   local hash="$2"
 
-  # 1. Algorithm Identification (Heuristic)
+  # 1. Heuristic algorithm identification.
   local algo
   if ! algo=$(core::identify_algorithm "$hash"); then
     echo "Error: Could not identify hash algorithm (length: ${#hash})."
@@ -34,7 +34,7 @@ do_verify_string() {
   coreutils::verify "$algo" "$file" "$hash"
   local status=$?
 
-  # 3. Output Handling
+  # 3. Manage output based on global CLI flags.
   # Respects global flags like --quiet or --status if implemented.
   # Maintains standard output for current integration tests.
   if [[ "$status" -eq "$EX_SUCCESS" ]]; then
@@ -64,34 +64,26 @@ main() {
   # 2. Mode Dispatcher
   case "$__CLI_MODE" in
   "verify_string")
-    # Backward compatibility mode (File + Explicit Hash)
+    # Explicit hash verification mode.
     do_verify_string "$__CLI_FILE" "$__CLI_HASH"
     exit "$?"
     ;;
   "check")
     local sumfile="${__CLI_FILES[0]}"
 
-    # 1. Algorithm Detection
+    # 1. Detect algorithm from checksum file.
     local algo
     if ! algo=$(core::identify_from_file "$sumfile"); then
       echo "Error: Could not identify algorithm from file: $sumfile"
       exit "$EX_OPERATIONAL_ERROR"
     fi
 
-    # 2. List Verification
     coreutils::check_list "$algo" "$sumfile"
     local status=$?
 
-    # 3. Output Handling
     if [[ "$status" -eq "$EX_SUCCESS" ]]; then
-      if [[ "$__CLI_QUIET" == "false" && "$__CLI_STATUS" == "false" ]]; then
-        echo "[OK] Batch verification passed ($algo)"
-      fi
       exit "$EX_SUCCESS"
     elif [[ "$status" -eq "$EX_INTEGRITY_FAIL" ]]; then
-      if [[ "$__CLI_STATUS" == "false" ]]; then
-        echo "[FAILED] Batch verification failed ($algo)"
-      fi
       exit "$EX_INTEGRITY_FAIL"
     else
       echo "[ERROR] System error during batch check"
@@ -100,14 +92,13 @@ main() {
     ;;
   "create")
     # Generation Mode (-n / implicit)
-    # Iterates over all files passed as arguments
     local has_error=false
     local output_buffer=""
 
     for file in "${__CLI_FILES[@]}"; do
       # Captures output for buffer
       if hash_line=$(coreutils::calculate "$__CLI_ALGO" "$file"); then
-        echo "$hash_line" # Displays to user
+        echo "$hash_line"
 
         # Accumulates in buffer for clipboard
         if [[ -n "$output_buffer" ]]; then
