@@ -5,12 +5,11 @@ load '../test_helper'
 setup() {
   source "$PROJECT_ROOT/lib/constants.sh"
 
-  #1. We create a real data file.
+  # 1. Create a real data file
   DATA_FILE="data_test.txt"
-  echo "Contenido critico del sistema" >"$DATA_FILE"
+  echo "System critical content" >"$DATA_FILE"
 
-  # 2. We generate REAL checksum files using system tools.
-  # This ensures that checkit is compatible with real sha256sum/md5sum.
+  # 2. Generate REAL checksum files using system tools
   SUM_SHA256="checksums.sha256"
   sha256sum "$DATA_FILE" >"$SUM_SHA256"
 
@@ -22,30 +21,34 @@ teardown() {
   rm -f "$DATA_FILE" "$SUM_SHA256" "$SUM_MD5"
 }
 
-@test "Integration: checkit -c detects and verifies SHA-256 sumfile" {
+@test "Integration: checkit -c verifies SHA-256 sumfile and outputs per-file status" {
   run "$CHECKIT_EXEC" -c "$SUM_SHA256"
 
   assert_success
-  assert_output --partial "Batch verification passed (sha256)"
+  # Expect specific file success message instead of global summary
+  assert_output --partial "[OK] $DATA_FILE (sha256)"
 }
 
-@test "Integration: checkit -c detects and verifies MD5 sumfile" {
+@test "Integration: checkit -c verifies MD5 sumfile and outputs per-file status" {
   run "$CHECKIT_EXEC" -c "$SUM_MD5"
 
   assert_success
-  assert_output --partial "Batch verification passed (md5)"
+  assert_output --partial "[OK] $DATA_FILE (md5)"
 }
 
 @test "Integration: checkit -c fails cleanly on checksum mismatch" {
-  # We create a corrupted sum file (valid hash length, but incorrect)
+  # Create a corrupted sum file (valid hash length but wrong content)
   BAD_SUM="bad.sha256"
-  # A random SHA256 hash
+  # Generate a dummy hash that won't match the file content
   echo "0000000000000000000000000000000000000000000000000000000000000000  $DATA_FILE" >"$BAD_SUM"
 
   run "$CHECKIT_EXEC" -c "$BAD_SUM"
 
+  # Should fail with integrity error
   assert_failure "$EX_INTEGRITY_FAIL"
-  assert_output --partial "Batch verification failed"
+
+  # Ensure NO success message is printed for the failed file
+  refute_output --partial "[OK]"
 
   rm "$BAD_SUM"
 }
@@ -53,5 +56,6 @@ teardown() {
 @test "Integration: checkit -c fails if sumfile does not exist" {
   run "$CHECKIT_EXEC" -c "ghost_file.txt"
 
+  # Should fail in identifying the file
   assert_failure "$EX_OPERATIONAL_ERROR"
 }
