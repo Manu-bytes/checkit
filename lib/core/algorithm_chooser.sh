@@ -1,71 +1,90 @@
 #!/usr/bin/env bash
 
 # core::identify_algorithm
-# Arguments: $1 - Hash, $2 - Filename Hint
+#
+# Determines the hash algorithm based on string length and optional hints
+# to resolve collisions.
+#
+# Arguments:
+#   $1 - Hash string (hexadecimal)
+#   $2 - (Optional) Filename hint for disambiguation
+#
+# Returns:
+#   Output: Algorithm name (md5, sha1, sha256, sha512, blake2, etc.)
+#   Exit Code: EX_SUCCESS if identified, EX_OPERATIONAL_ERROR if fails.
+
 core::identify_algorithm() {
   local input_hash="${1:-}"
   local filename_hint="${2:-}"
 
-  # Clean spaces
+  # Remove whitespace
   input_hash="${input_hash//[[:space:]]/}"
+
+  # STRICT VALIDATION: Ensure input is strictly hexadecimal.
+  # This prevents filenames with similar lengths (e.g., 32 chars)
+  # from being misidentified as hashes by the parser.
+  if [[ ! "$input_hash" =~ ^[a-fA-F0-9]+$ ]]; then
+    return "$EX_OPERATIONAL_ERROR"
+  fi
+
   local length="${#input_hash}"
 
-  # Convert filename hint to lowercase for easier matching
+  # Convert hint to lowercase for matching
   local hint_lower
   hint_lower=$(echo "$filename_hint" | tr '[:upper:]' '[:lower:]')
 
   case "$length" in
   32)
+    # 32 chars = 128 bits (MD5 or BLAKE2-128)
     if [[ "$hint_lower" == *"b2"* ]] || [[ "$hint_lower" == *"blake"* ]]; then
       echo "blake2-128"
     else
-      # Default to MD5
       echo "md5"
     fi
     return "$EX_SUCCESS"
     ;;
   40)
+    # 40 chars = 160 bits (SHA-1 or BLAKE2-160)
     if [[ "$hint_lower" == *"b2"* ]] || [[ "$hint_lower" == *"blake"* ]]; then
       echo "blake2-160"
     else
-      # Default to SHA-1
       echo "sha1"
     fi
     return "$EX_SUCCESS"
     ;;
   56)
+    # 56 chars = 224 bits (SHA-224 or BLAKE2-224)
     if [[ "$hint_lower" == *"b2"* ]] || [[ "$hint_lower" == *"blake"* ]]; then
       echo "blake2-224"
     else
-      # Default to SHA-224
       echo "sha224"
     fi
     return "$EX_SUCCESS"
     ;;
   64)
+    # 64 chars = 256 bits (SHA-256 or BLAKE2-256)
     if [[ "$hint_lower" == *"b2"* ]] || [[ "$hint_lower" == *"blake"* ]]; then
       echo "blake2-256"
     else
-      # Default to SHA-256
       echo "sha256"
     fi
     return "$EX_SUCCESS"
     ;;
   96)
+    # 96 chars = 384 bits (SHA-384 or BLAKE2-384)
     if [[ "$hint_lower" == *"b2"* ]] || [[ "$hint_lower" == *"blake"* ]]; then
       echo "blake2-384"
     else
-      # Default to SHA-384
       echo "sha384"
     fi
     return "$EX_SUCCESS"
     ;;
   128)
-    # Resolve SHA-512 vs BLAKE2b collision via file extension.
+    # 128 chars = 512 bits (SHA-512 or BLAKE2b)
+    # Resolve collision using file extension/name hint
     if [[ "$hint_lower" == *"b2"* ]] || [[ "$hint_lower" == *"blake"* ]]; then
       echo "blake2"
     else
-      # Default to SHA-512
       echo "sha512"
     fi
     return "$EX_SUCCESS"
@@ -79,6 +98,14 @@ core::identify_algorithm() {
 # core::identify_from_file
 # Scans the first lines of the file looking for algorithm clues.
 # Supports GPG headers, BSD tags, and GNU standard format.
+#
+# Arguments:
+#   $1 - Path to the checksums file
+#
+# Returns:
+#   Output: Name of the algorithm (e.g., sha256)
+#   Exit Code: EX_SUCCESS or error.
+
 core::identify_from_file() {
   local file="$1"
 
@@ -136,6 +163,7 @@ core::identify_from_file() {
     if [[ "$first_token" == -* ]]; then continue; fi
 
     # Test if identify_algorithm recognizes this token
+    # Pass the file "$file" as the hint for disambiguation
     if output=$(core::identify_algorithm "$first_token" "$file"); then
       echo "$output"
       return "$EX_SUCCESS"
