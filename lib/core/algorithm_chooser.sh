@@ -129,10 +129,26 @@ core::identify_from_file() {
     if [[ -z "$line" ]]; then continue; fi
 
     # --- 1: GPG HEADER DETECTION ---
-    # Example: "Hash: SHA256"
+    # Matches: "Hash: SHA256", "Hash: b2-128", "Hash: SHA-512"
     if [[ "$line" =~ ^Hash:[[:space:]]*([A-Za-z0-9-]+) ]]; then
-      local algo="${BASH_REMATCH[1]}"
-      echo "$algo" | tr '[:upper:]' '[:lower:]'
+      local raw_algo="${BASH_REMATCH[1]}"
+
+      # 1. Normalize to lowercase
+      local algo
+      algo=$(echo "$raw_algo" | tr '[:upper:]' '[:lower:]')
+
+      # 2. Normalize aliases
+      # Handle "b2-" prefix -> "blake2-"
+      if [[ "$algo" == "b2"* ]]; then
+        algo="${algo/b2/blake2}"
+      fi
+
+      # Handle "sha-" prefix (e.g. sha-256 -> sha256)
+      if [[ "$algo" == "sha-"* ]]; then
+        algo="${algo//-/}"
+      fi
+
+      echo "$algo"
       return "$EX_SUCCESS"
     fi
 
@@ -153,22 +169,6 @@ core::identify_from_file() {
       fi
       return "$EX_SUCCESS"
     fi
-
-    # --- 3: GNU HASH HEURISTIC ---
-    # Check if the first token looks like a valid hash
-    local first_token
-    first_token=$(echo "$line" | awk '{print $1}')
-
-    # Ignore GPG boundaries
-    if [[ "$first_token" == -* ]]; then continue; fi
-
-    # Test if identify_algorithm recognizes this token
-    # Pass the file "$file" as the hint for disambiguation
-    if output=$(core::identify_algorithm "$first_token" "$file"); then
-      echo "$output"
-      return "$EX_SUCCESS"
-    fi
-
   done <"$file"
 
   return "$EX_OPERATIONAL_ERROR"
