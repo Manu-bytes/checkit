@@ -35,6 +35,19 @@ __get_algo_length() {
   esac
 }
 
+# Helper: Resolve SHA version by length for "shasums" generic files.
+__get_sha_by_length() {
+  local len="$1"
+  case "$len" in
+  40) echo "sha1" ;;
+  56) echo "sha224" ;;
+  64) echo "sha256" ;;
+  96) echo "sha384" ;;
+  128) echo "sha512" ;;
+  *) echo "" ;;
+  esac
+}
+
 # coreutils::verify
 coreutils::verify() {
   local algo="$1"
@@ -63,27 +76,27 @@ coreutils::check_list() {
   if [[ ! -f "$sumfile" ]]; then return "$EX_OPERATIONAL_ERROR"; fi
 
   local strict_algo=""
+  local family_constraint=""
   local fname_lower
   fname_lower=$(basename "$sumfile" | tr '[:upper:]' '[:lower:]')
 
   # --- 1: STRICT NOMENCLATURE DETECTION ---
-  # Regex para capturar shaxsum, md5sum, b2sum
-  if [[ "$fname_lower" =~ ^(md5|sha1|sha224|sha256|sha384|sha512|b2|blake2) ]]; then
-    local match="${BASH_REMATCH[1]}"
-    if [[ "$match" == "b2" || "$match" == "blake2" ]]; then
-      strict_algo="blake_family"
-    else
-      strict_algo="$match"
-    fi
+  # Regex looks for specific numbers to prioritize standard formats.
+  if [[ "$fname_lower" =~ ^(md5|sha1|sha224|sha256|sha384|sha512) ]]; then
+    strict_algo="${BASH_REMATCH[1]}"
+  elif [[ "$fname_lower" =~ (b2|blake2) ]]; then
+    strict_algo="blake_family"
+  elif [[ "$fname_lower" =~ sha ]]; then
+    strict_algo="sha_family"
   fi
+
   # --- 1.5: FAMILY RESTRICTION (Generic) ---
   if [[ -z "$strict_algo" ]]; then
-    if [[ "$fname_lower" == *"sha"* || "$fname_lower" == *"md5"* ]]; then
+    if [[ "$fname_lower" == *"md5"* ]]; then
       family_constraint="gnu"
-    elif [[ "$fname_lower" == *"b2"* || "$fname_lower" == *"blake"* ]]; then
-      family_constraint="blake"
     fi
   fi
+
   # --- 2: DETECTION BY INTERNAL METADATA ---
   if [[ -z "$strict_algo" ]]; then
     local meta_algo
@@ -113,15 +126,13 @@ coreutils::check_list() {
       continue
     fi
 
-    # --- LOGICA DE VERIFICACIÓN JERÁRQUICA ---
-
-    if [[ -n "$strict_algo" && "$strict_algo" != "blake_family" ]]; then
-      # CASE: Specific Imposed Algorithm
+    # --- 2.5: HIERARCHICAL VERIFICATION LOGIC ---
+    if [[ -n "$strict_algo" && "$strict_algo" != *"_family" ]]; then
+      # CASE: Specific Algorithm (sha256sum)
       local expected_len
       expected_len=$(__get_algo_length "$strict_algo")
-      local current_len="${#hash_line}"
 
-      if [[ "$expected_len" -ne "$current_len" ]]; then
+      if [[ "${#hash_line}" -ne "$expected_len" ]]; then
         echo "[SKIPPED] $file_line (Format mismatch: expected $strict_algo)"
         continue
       fi
@@ -135,7 +146,7 @@ coreutils::check_list() {
       fi
 
     elif [[ "$strict_algo" == "blake_family" ]]; then
-      # CASE: The Strict Blake Family (b2sums)
+      # CASE: Blake Family Dynamics
       local target_algo="$detected_algo"
       if [[ "$detected_algo" == "sha"* || "$detected_algo" == "md5" ]]; then
         target_algo=$(__get_fallback_algo "$detected_algo")
@@ -149,24 +160,37 @@ coreutils::check_list() {
         failures=$((failures + 1))
       fi
 
+    elif [[ "$strict_algo" == "sha_family" ]]; then
+      # CASE: SHA Family Dynamics
+      local target_algo
+      target_algo=$(__get_sha_by_length "${#hash_line}")
+
+      if [[ -z "$target_algo" ]]; then
+        echo "[SKIPPED] $file_line (Not a SHA hash)"
+        continue
+      fi
+
+      if coreutils::verify "$target_algo" "$file_line" "$hash_line"; then
+        echo "[OK] $file_line ($target_algo)"
+        verified_count=$((verified_count + 1))
+      else
+        echo "[FAILED] $file_line ($target_algo)"
+        failures=$((failures + 1))
+      fi
     else
-      # --- LEVEL 3: MIXED MODE WITH FAMILY PROTECTION ---
+      # --- 3: MIXED MODE WITH FAMILY PROTECTION ---
       # 1. Attempt detected algorithm
       if coreutils::verify "$detected_algo" "$file_line" "$hash_line"; then
         echo "[OK] $file_line ($detected_algo)"
         verified_count=$((verified_count + 1))
       else
-        # 2. Fallback Logic
         local fallback_algo
         fallback_algo=$(__get_fallback_algo "$detected_algo")
         local allow_fallback=true
 
-        if [[ "$family_constraint" == "gnu" ]]; then
-          # Si el archivo es GNU (shasums), prohibido fallback a Blake
-          if [[ "$fallback_algo" == "blake"* ]]; then allow_fallback=false; fi
-        elif [[ "$family_constraint" == "blake" ]]; then
-          # Si el archivo es Blake, prohibido fallback a SHA (raro, pero posible)
-          if [[ "$fallback_algo" != "blake"* ]]; then allow_fallback=false; fi
+        # Legacy MD5 fallback constraint
+        if [[ "$family_constraint" == "gnu" && "$fallback_algo" == "blake"* ]]; then
+          allow_fallback=false
         fi
 
         local recovered=false
@@ -184,7 +208,6 @@ coreutils::check_list() {
         fi
       fi
     fi
-
   done 3<"$sumfile"
 
   if [[ "$failures" -gt 0 ]]; then return "$EX_INTEGRITY_FAIL"; fi
