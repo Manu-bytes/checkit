@@ -7,6 +7,8 @@ PROJECT_ROOT="$(dirname "$BIN_DIR")"
 # Library imports
 # shellcheck source=lib/constants.sh
 source "$PROJECT_ROOT/lib/constants.sh"
+# shellcheck source=lib/core/parser.sh
+source "$PROJECT_ROOT/lib/core/parser.sh"
 # shellcheck source=lib/core/algorithm_chooser.sh
 source "$PROJECT_ROOT/lib/core/algorithm_chooser.sh"
 # shellcheck source=lib/adapters/coreutils.sh
@@ -71,22 +73,15 @@ main() {
   "check")
     local sumfile="${__CLI_FILES[0]}"
 
-    # 1. Detect algorithm from checksum file.
-    local algo
-    if ! algo=$(core::identify_from_file "$sumfile"); then
-      echo "Error: Could not identify algorithm from file: $sumfile"
-      exit "$EX_OPERATIONAL_ERROR"
-    fi
-
-    coreutils::check_list "$algo" "$sumfile"
+    coreutils::check_list "auto" "$sumfile"
     local status=$?
 
     if [[ "$status" -eq "$EX_SUCCESS" ]]; then
       exit "$EX_SUCCESS"
     elif [[ "$status" -eq "$EX_INTEGRITY_FAIL" ]]; then
+      # Feedback is already printed per line
       exit "$EX_INTEGRITY_FAIL"
     else
-      echo "[ERROR] System error during batch check"
       exit "$status"
     fi
     ;;

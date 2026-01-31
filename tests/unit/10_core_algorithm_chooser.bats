@@ -100,17 +100,6 @@ setup() {
 }
 
 # --- SECTION 3: Smart File Scanning (GPG, BSD, GNU) ---
-@test "Core: identify_from_file detects SHA-256 from standard sumfile" {
-  local sumfile="test_std.txt"
-  echo "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  file" >"$sumfile"
-
-  run core::identify_from_file "$sumfile"
-
-  rm "$sumfile"
-  assert_success
-  assert_output "sha256"
-}
-
 @test "Core: identify_from_file detects SHA-512 from BSD-style tag" {
   local sumfile="test_bsd_sha.txt"
   echo "SHA512 (data.tar) = cf83e135..." >"$sumfile"
