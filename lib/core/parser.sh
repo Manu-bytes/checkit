@@ -47,6 +47,7 @@ core::parse_line() {
     local detected_algo="$output"
     local detected_hash="$clean_first"
     local filename
+    # shellcheck disable=SC2001
     filename=$(echo "$line" | sed "s/^${first_token}[[:space:]]*//")
     filename="${filename#\*}" # Remove binary marker
 
@@ -65,6 +66,7 @@ core::parse_line() {
     local detected_hash="$clean_last"
     local filename
     # Remove the last token from the end of the line
+    # shellcheck disable=SC2001
     filename=$(echo "$line" | sed "s/[[:space:]]*$last_token$//")
     filename="${filename#\*}"
 

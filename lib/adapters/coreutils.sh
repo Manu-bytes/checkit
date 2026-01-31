@@ -109,6 +109,7 @@ coreutils::check_list() {
   local verified_count=0
 
   # Line-by-Line Processing
+  # shellcheck disable=SC2094
   while IFS= read -r line <&3 || [[ -n "$line" ]]; do
     local parsed
     if ! parsed=$(core::parse_line "$line" "$sumfile"); then continue; fi
