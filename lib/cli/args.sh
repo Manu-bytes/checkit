@@ -11,6 +11,9 @@ __CLI_COPY=false            # Clipboard flag
 __CLI_QUIET=false           # Quiet flag
 __CLI_STATUS=false          # Status only flag
 __CLI_STRICT_SECURITY=false # Verify GPG signatures strictly
+__CLI_IGNORE_MISSING=false
+__CLI_STRICT=false
+__CLI_WARN=false
 
 # cli::print_usage
 cli::print_usage() {
@@ -18,15 +21,24 @@ cli::print_usage() {
 Usage:
   checkit [FILE] [HASH]             # Quick Verify
   checkit [FILE] [--algo ALGO]      # Calculate Hash
-  checkit -c [SUMFILE]              # Check multiple hashes
+  checkit -c [SUMFILE] [OPTIONS]    # Check multiple hashes
 
 Options:
-  -c, --check       Read checksums from file
-  -a, --algo <alg>  Specify algorithm (md5, sha256, etc). Default: sha256
-  -v, --verify-sign Verify GPG signature if present (enforces strict mode)
-  -y, --copy        Copy output to clipboard
-  -h, --help        Show this help
-      --version     Show version
+  -c, --check           Read checksums from file
+  -a, --algo <alg>      Specify algorithm (md5, sha256, etc). Default: sha256
+  -v, --verify-sign     Verify GPG signature if present (enforces strict mode)
+  -y, --copy            Copy output to clipboard
+
+Check Mode Options:
+      --ignore-missing  Don't fail or report status for missing files
+      --quiet           Don't print OK for each successfully verified file
+      --status          Don't output anything, status code shows success
+      --strict          Exit non-zero for improperly formatted checksum lines
+  -w, --warn            Warn about improperly formatted checksum lines
+  -q, --quiet           Don't print OK
+
+  -h, --help            Show this help
+      --version         Show version
 EOF
 }
 
@@ -43,6 +55,9 @@ cli::parse_args() {
   __CLI_QUIET=false
   __CLI_STATUS=false
   __CLI_STRICT_SECURITY=false
+  __CLI_IGNORE_MISSING=false
+  __CLI_STRICT=false
+  __CLI_WARN=false
 
   if [[ $# -eq 0 ]]; then
     echo "Error: Missing arguments."
@@ -69,6 +84,18 @@ cli::parse_args() {
       __CLI_COPY=true
       shift
       ;;
+    --ignore-missing)
+      __CLI_IGNORE_MISSING=true
+      shift
+      ;;
+    --strict)
+      __CLI_STRICT=true
+      shift
+      ;;
+    -w | --warn)
+      __CLI_WARN=true
+      shift
+      ;;
     -q | --quiet)
       __CLI_QUIET=true
       shift
@@ -82,7 +109,7 @@ cli::parse_args() {
       exit "$EX_SUCCESS"
       ;;
     --version)
-      echo "checkit v1.0.0"
+      echo "checkit v0.8.0"
       exit "$EX_SUCCESS"
       ;;
     -*)

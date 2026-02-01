@@ -127,6 +127,9 @@ coreutils::check_list() {
     local f_algo="$2"
     local extra_info=""
 
+    if [[ "$__CLI_QUIET" == "true" || "$__CLI_STATUS" == "true" ]]; then
+      return
+    fi
     if type -t gpg::verify_target >/dev/null; then
       if gpg::verify_target "$f_path"; then
         extra_info=" + [SIGNED]"
@@ -169,12 +172,17 @@ coreutils::check_list() {
 
   local failures=0
   local verified_count=0
+  local bad_lines=0
 
   # shellcheck disable=SC2094
   while IFS= read -r line <&3 || [[ -n "$line" ]]; do
     local parsed
-    if ! parsed=$(core::parse_line "$line" "$sumfile"); then continue; fi
-
+    if ! parsed=$(core::parse_line "$line" "$sumfile"); then
+      if [[ "$line" != \#* && -n "$(echo "$line" | tr -d '[:space:]')" ]]; then
+        bad_lines=$((bad_lines + 1))
+      fi
+      continue
+    fi
     local detected_algo
     local hash_line
     local file_line
@@ -183,6 +191,9 @@ coreutils::check_list() {
     file_line=$(echo "$parsed" | cut -d'|' -f3)
 
     if [[ ! -f "$file_line" ]]; then
+      if [[ "$__CLI_IGNORE_MISSING" == "true" ]]; then
+        continue # Saltamos silenciosamente, no cuenta como fallo
+      fi
       echo "[MISSING] $file_line"
       failures=$((failures + 1))
       continue
@@ -273,8 +284,33 @@ coreutils::check_list() {
     fi
   done 3<"$sumfile"
 
+  # --- POST-LOOP REPORTING ---
+
+  # 1. Warn about improper formatting
+  if [[ "$bad_lines" -gt 0 ]]; then
+    if [[ "$__CLI_WARN" == "true" || "$__CLI_STRICT" == "true" ]]; then
+      echo "checkit: WARNING: $bad_lines line is improperly formatted" >&2
+    fi
+  fi
+
+  # 2. Exit Status Logic
+  # Priority: Bad format with --strict takes precedence?
+  # GNU sha256sum: Exit 1 if checksum mismatch OR missing file OR bad format (w/ strict)
   if [[ "$failures" -gt 0 ]]; then return "$EX_INTEGRITY_FAIL"; fi
-  if [[ "$verified_count" -eq 0 ]]; then return "$EX_OPERATIONAL_ERROR"; fi
+
+  if [[ "$bad_lines" -gt 0 && "$__CLI_STRICT" == "true" ]]; then
+    return "$EX_INTEGRITY_FAIL"
+  fi
+
+  # Special case: if --ignore-missing is enabled and we verified nothing because everything was missing:
+  # GNU sha256sum returns 0 when --ignore-missing is enabled, even if it verified nothing.
+  if [[ "$verified_count" -eq 0 ]]; then
+    if [[ "$__CLI_IGNORE_MISSING" == "true" ]]; then
+      return "$EX_SUCCESS"
+    fi
+    return "$EX_OPERATIONAL_ERROR"
+  fi
+
   return "$EX_SUCCESS"
 }
 
