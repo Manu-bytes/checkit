@@ -3,11 +3,16 @@
 # Helper: Map algorithm string to corresponding binary.
 __resolve_cmd() {
   local algo="$1"
-  if [[ "$algo" == "blake2"* ]]; then echo "b2sum"; else echo "${algo}sum"; fi
+  if [[ "$algo" == "blake2"* ]] || [[ "$algo" == "b2"* ]]; then
+    echo "b2sum"
+  else
+    echo "${algo}sum"
+  fi
 }
 
 # Helper: Get fallback algorithm for blind ambiguity.
-__get_fallback_algo() {
+# Used externally by algorithm_chooser logic.
+coreutils::get_fallback_algo() {
   local algo="$1"
   case "$algo" in
   md5) echo "blake2-128" ;;
@@ -21,16 +26,25 @@ __get_fallback_algo() {
 }
 
 # Helper: Return expected hash length for a given algorithm.
-# Used for "Format Integrity" validation.
-__get_algo_length() {
+# Made PUBLIC (coreutils::) so verify can use it for pre-validation.
+coreutils::get_algo_length() {
   local algo="$1"
+
+  # Check for explicit blake2-SIZE format first
+  if [[ "$algo" =~ ^blake2-([0-9]+)$ ]]; then
+    local bits="${BASH_REMATCH[1]}"
+    # Length in hex chars = bits / 4
+    echo $((bits / 4))
+    return
+  fi
+
   case "$algo" in
   md5 | blake2-128) echo 32 ;;
   sha1 | blake2-160) echo 40 ;;
   sha224 | blake2-224) echo 56 ;;
   sha256 | blake2-256) echo 64 ;;
   sha384 | blake2-384) echo 96 ;;
-  sha512 | blake2) echo 128 ;;
+  sha512 | blake2 | b2 | blake2b | blake2-512) echo 128 ;;
   *) echo 0 ;;
   esac
 }
@@ -50,14 +64,50 @@ __get_sha_by_length() {
 
 # coreutils::verify
 coreutils::verify() {
-  local algo="$1"
+  local raw_algo="$1"
   local file="$2"
   local expected_hash="$3"
+  local algo="$raw_algo"
 
   if [[ ! -f "$file" ]]; then return "$EX_OPERATIONAL_ERROR"; fi
+
+  # --- 0. ALGORITHM NORMALIZATION ---
+  # Standardize "b2", "b2-", "blake2b", etc. to "blake2-SIZE" or "blake2"
+
+  # 1. Normalize prefixes: b2-XXX -> blake2-XXX
+  if [[ "$algo" =~ ^b2-?([0-9]+)$ ]]; then
+    algo="blake2-${BASH_REMATCH[1]}"
+  fi
+
+  # 2. Normalize concatenated suffix: blake2b256 -> blake2-256
+  if [[ "$algo" =~ ^blake2b?([0-9]+)$ ]]; then
+    algo="blake2-${BASH_REMATCH[1]}"
+  fi
+
+  # --- 1. STRICT LENGTH VALIDATION ---
+  local expected_len
+  expected_len=$(coreutils::get_algo_length "$algo")
+
+  if [[ "$expected_len" -gt 0 ]]; then
+    if [[ "${#expected_hash}" -ne "$expected_len" ]]; then
+      return "$EX_INTEGRITY_FAIL"
+    fi
+  fi
+
+  # --- 2. EXECUTION ---
   local cmd
   cmd=$(__resolve_cmd "$algo")
-  if echo "${expected_hash}  ${file}" | "$cmd" -c - >/dev/null 2>&1; then
+
+  local args=("-c" "-")
+
+  # Now checking the NORMALIZED algo variable
+  if [[ "$algo" =~ ^blake2-([0-9]+)$ ]]; then
+    local bits="${BASH_REMATCH[1]}"
+    args=("-l" "$bits" "-c" "-")
+  fi
+
+  # Pass original hash and file to the binary
+  if echo "${expected_hash}  ${file}" | "$cmd" "${args[@]}" >/dev/null 2>&1; then
     return "$EX_SUCCESS"
   else
     return "$EX_INTEGRITY_FAIL"
@@ -65,10 +115,6 @@ coreutils::verify() {
 }
 
 # coreutils::check_list
-# Implements the 3-Level Optimization Hierarchy:
-# 1. Strict Naming (SHAxSUMS)
-# 2. Internal Metadata (Hash: SHAx)
-# 3. General Compatibility (Mixed/Fallback)
 coreutils::check_list() {
   local _ignored="$1"
   local sumfile="$2"
@@ -76,25 +122,19 @@ coreutils::check_list() {
   if [[ ! -f "$sumfile" ]]; then return "$EX_OPERATIONAL_ERROR"; fi
 
   # Internal helper to consolidate success reporting.
-  # Handles output formatting and checks for target file signatures.
   __on_success() {
     local f_path="$1"
     local f_algo="$2"
     local extra_info=""
 
-    # Check if the GPG adapter is loaded and the function exists
     if type -t gpg::verify_target >/dev/null; then
-      # Attempt to verify independent signature for the target file
       if gpg::verify_target "$f_path"; then
         extra_info=" + [SIGNED]"
       elif [[ $? -eq 3 ]]; then
-        # EX_SECURITY_FAIL: Signature exists but is invalid
         extra_info=" + [BAD SIG]"
       fi
     fi
 
-    # Print success status with optional signature info
-    # Note: extra_info is appended directly to avoid empty parentheses
     echo "[OK] $f_path ($f_algo)${extra_info}"
   }
 
@@ -130,7 +170,6 @@ coreutils::check_list() {
   local failures=0
   local verified_count=0
 
-  # Line-by-Line Processing
   # shellcheck disable=SC2094
   while IFS= read -r line <&3 || [[ -n "$line" ]]; do
     local parsed
@@ -153,7 +192,8 @@ coreutils::check_list() {
     if [[ -n "$strict_algo" && "$strict_algo" != *"_family" ]]; then
       # CASE: Specific Algorithm (sha256sum)
       local expected_len
-      expected_len=$(__get_algo_length "$strict_algo")
+      # UPDATED CALL: coreutils::get_algo_length
+      expected_len=$(coreutils::get_algo_length "$strict_algo")
 
       if [[ "${#hash_line}" -ne "$expected_len" ]]; then
         echo "[SKIPPED] $file_line (Format mismatch: expected $strict_algo)"
@@ -172,7 +212,7 @@ coreutils::check_list() {
       # CASE: Blake Family Dynamics
       local target_algo="$detected_algo"
       if [[ "$detected_algo" == "sha"* || "$detected_algo" == "md5" ]]; then
-        target_algo=$(__get_fallback_algo "$detected_algo")
+        target_algo=$(coreutils::get_fallback_algo "$detected_algo")
       fi
 
       if coreutils::verify "$target_algo" "$file_line" "$hash_line"; then
@@ -208,7 +248,7 @@ coreutils::check_list() {
         verified_count=$((verified_count + 1))
       else
         local fallback_algo
-        fallback_algo=$(__get_fallback_algo "$detected_algo")
+        fallback_algo=$(coreutils::get_fallback_algo "$detected_algo")
         local allow_fallback=true
 
         # Legacy MD5 fallback constraint

@@ -9,24 +9,30 @@ setup() {
 }
 
 @test "Adapter: coreutils::verify constructs correct command/pipe for SHA-256" {
+
+  local valid_hash_64
+  valid_hash_64=$(printf 'a%.0s' {1..64})
+
   # Mocking: Simulate sha256sum reading from STDIN
   function sha256sum() {
     # We read what the pipe sends us
     local input
     input=$(cat)
 
-    # We verify that the input has the correct format
-    if [[ "$input" == *"good_hash"* ]] && [[ "$input" == *"test_file.txt"* ]]; then
+    # We verify that the input contains OUR hash and filename
+    # Note: We hardcode the match logic to the variable we defined above
+    if [[ "$input" == *"$valid_hash_64"* ]] && [[ "$input" == *"test_file.txt"* ]]; then
       return 0
     else
       return 1
     fi
   }
   export -f sha256sum
+  export valid_hash_64
 
   local algo="sha256"
   local file="test_file.txt"
-  local hash="good_hash"
+  local hash="$valid_hash_64"
 
   # We create a dummy file to pass the existence validation (-f)
   touch "$file"
@@ -90,4 +96,34 @@ setup() {
   run coreutils::calculate "$algo" "$file"
 
   assert_failure "$EX_OPERATIONAL_ERROR"
+}
+
+@test "Adapter: coreutils::verify enforces strict length for aliases (b2/blake2-512)" {
+  local algo="b2"
+  local file="test_aliases.txt"
+  local hash_224
+  hash_224=$(printf 'a%.0s' {1..56})
+
+  touch "$file"
+
+  run coreutils::verify "$algo" "$file" "$hash_224"
+
+  rm "$file"
+
+  assert_failure "$EX_INTEGRITY_FAIL"
+}
+
+@test "Adapter: coreutils::verify fails on mismatched custom alias (b2-128 vs 224-bit hash)" {
+  local algo="b2-128"
+  local file="test_mismatch.txt"
+  local hash_224
+  hash_224=$(printf 'a%.0s' {1..56})
+
+  touch "$file"
+
+  run coreutils::verify "$algo" "$file" "$hash_224"
+
+  rm "$file"
+
+  assert_failure "$EX_INTEGRITY_FAIL"
 }

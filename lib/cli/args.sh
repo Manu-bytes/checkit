@@ -3,6 +3,7 @@
 # Global variables for CLI state
 __CLI_MODE=""               # check, create, verify_string
 __CLI_ALGO="sha256"         # Default algorithm
+__CLI_ALGO_SET=false        # Set algorithm
 __CLI_FILES=()              # Array of target files
 __CLI_FILE=""               # Single file target (for convenience)
 __CLI_HASH=""               # Expected hash (for verify_string)
@@ -34,6 +35,7 @@ cli::parse_args() {
   # Reset globals
   __CLI_MODE=""
   __CLI_ALGO="sha256"
+  __CLI_ALGO_SET=false
   __CLI_FILES=()
   __CLI_FILE=""
   __CLI_HASH=""
@@ -56,6 +58,7 @@ cli::parse_args() {
       ;;
     -a | --algo)
       __CLI_ALGO="$2"
+      __CLI_ALGO_SET=true
       shift 2
       ;;
     -v | --verify-sign)

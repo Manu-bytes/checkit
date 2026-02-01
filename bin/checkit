@@ -26,35 +26,45 @@ source "$PROJECT_ROOT/lib/utils/clipboard.sh"
 do_verify_string() {
   local file="$1"
   local hash="$2"
-
-  # 1. Heuristic algorithm identification.
   local algo
-  if ! algo=$(core::identify_algorithm "$hash"); then
-    echo "Error: Could not identify hash algorithm (length: ${#hash})."
-    return "$EX_OPERATIONAL_ERROR"
-  fi
 
-  # 2. Integrity Verification
-  coreutils::verify "$algo" "$file" "$hash"
-  local status=$?
-
-  # 3. Manage output based on global CLI flags.
-  # Respects global flags like --quiet or --status if implemented.
-  # Maintains standard output for current integration tests.
-  if [[ "$status" -eq "$EX_SUCCESS" ]]; then
-    if [[ "$__CLI_QUIET" == "false" && "$__CLI_STATUS" == "false" ]]; then
-      echo "[OK] $file: Verified ($algo)"
-    fi
-    return "$EX_SUCCESS"
-  elif [[ "$status" -eq "$EX_INTEGRITY_FAIL" ]]; then
-    if [[ "$__CLI_STATUS" == "false" ]]; then
-      echo "[FAILED] $file: Checksum mismatch ($algo)"
-    fi
-    return "$EX_INTEGRITY_FAIL"
+  # 1. Determine Algorithm Strategy
+  if [[ "$__CLI_ALGO_SET" == "true" ]]; then
+    # Priority A: User explicit request
+    algo="$__CLI_ALGO"
   else
-    echo "[ERROR] System error during verification"
-    return "$status"
+    # Priority B: Heuristic identification
+    if ! algo=$(core::identify_algorithm "$hash"); then
+      echo "Error: Could not identify hash algorithm (length: ${#hash})."
+      return "$EX_OPERATIONAL_ERROR"
+    fi
   fi
+
+  # 2. Primary Verification Attempt
+  # We use a subshell or capture exit code specifically to handle the fallback logic logic manually
+  if coreutils::verify "$algo" "$file" "$hash"; then
+    echo "[OK] $file ($algo)"
+    return "$EX_SUCCESS"
+  fi
+
+  # 3. Ambiguity Resolution (Fallback)
+  # Only attempt if the user did NOT enforce a specific algorithm via --algo
+  if [[ "$__CLI_ALGO_SET" == "false" ]]; then
+    local fallback_algo
+    fallback_algo=$(coreutils::get_fallback_algo "$algo")
+
+    if [[ -n "$fallback_algo" ]]; then
+      # Retry with fallback
+      if coreutils::verify "$fallback_algo" "$file" "$hash"; then
+        echo "[OK] $file ($fallback_algo)"
+        return "$EX_SUCCESS"
+      fi
+    fi
+  fi
+
+  # 4. Final Failure Report
+  echo "[FAILED] $file ($algo)"
+  return "$EX_INTEGRITY_FAIL"
 }
 
 main() {
