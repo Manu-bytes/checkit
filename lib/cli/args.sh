@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 
 # Global variables for CLI state
-__CLI_MODE=""       # check, create, verify_string
-__CLI_ALGO="sha256" # Default algorithm
-__CLI_FILES=()      # Array of target files
-__CLI_FILE=""       # Single file target (for convenience)
-__CLI_HASH=""       # Expected hash (for verify_string)
-__CLI_COPY=false    # Clipboard flag
-__CLI_QUIET=false   # Quiet flag
-__CLI_STATUS=false  # Status only flag
+__CLI_MODE=""               # check, create, verify_string
+__CLI_ALGO="sha256"         # Default algorithm
+__CLI_FILES=()              # Array of target files
+__CLI_FILE=""               # Single file target (for convenience)
+__CLI_HASH=""               # Expected hash (for verify_string)
+__CLI_COPY=false            # Clipboard flag
+__CLI_QUIET=false           # Quiet flag
+__CLI_STATUS=false          # Status only flag
+__CLI_STRICT_SECURITY=false # Verify GPG signatures strictly
 
 # cli::print_usage
 cli::print_usage() {
@@ -21,6 +22,7 @@ Usage:
 Options:
   -c, --check       Read checksums from file
   -a, --algo <alg>  Specify algorithm (md5, sha256, etc). Default: sha256
+  -v, --verify-sign Verify GPG signature if present (enforces strict mode)
   -y, --copy        Copy output to clipboard
   -h, --help        Show this help
       --version     Show version
@@ -38,6 +40,7 @@ cli::parse_args() {
   __CLI_COPY=false
   __CLI_QUIET=false
   __CLI_STATUS=false
+  __CLI_STRICT_SECURITY=false
 
   if [[ $# -eq 0 ]]; then
     echo "Error: Missing arguments."
@@ -45,29 +48,19 @@ cli::parse_args() {
     return "$EX_OPERATIONAL_ERROR"
   fi
 
-  # 1. Parse Args Loop
   while [[ $# -gt 0 ]]; do
     case "$1" in
-    -h | --help)
-      cli::print_usage
-      return "$EX_SUCCESS"
-      ;;
-    --version)
-      echo "checkit v0.1.0"
-      return "$EX_SUCCESS"
-      ;;
     -c | --check)
       __CLI_MODE="check"
       shift
       ;;
     -a | --algo)
-      if [[ -n "$2" && "$2" != -* ]]; then
-        __CLI_ALGO="$2"
-        shift 2
-      else
-        echo "Error: --algo requires an argument."
-        return "$EX_OPERATIONAL_ERROR"
-      fi
+      __CLI_ALGO="$2"
+      shift 2
+      ;;
+    -v | --verify-sign)
+      __CLI_STRICT_SECURITY=true
+      shift
       ;;
     -y | --copy)
       __CLI_COPY=true
@@ -81,6 +74,14 @@ cli::parse_args() {
       __CLI_STATUS=true
       shift
       ;;
+    -h | --help)
+      cli::print_usage
+      exit "$EX_SUCCESS"
+      ;;
+    --version)
+      echo "checkit v1.0.0"
+      exit "$EX_SUCCESS"
+      ;;
     -*)
       echo "Error: Unknown option $1"
       return "$EX_OPERATIONAL_ERROR"
@@ -93,9 +94,7 @@ cli::parse_args() {
     esac
   done
 
-  # 2. Mode Inference (The Logic You Requested)
-
-  # If explicit mode (-c) has already been defined
+  # Mode Inference Logic
   if [[ "$__CLI_MODE" == "check" ]]; then
     if [[ ${#__CLI_FILES[@]} -eq 0 ]]; then
       echo "Error: Missing sumfile argument for check mode."
@@ -104,24 +103,18 @@ cli::parse_args() {
     return "$EX_SUCCESS"
   fi
 
-  # If there is NO explicit mode, we infer based on the number of positional arguments.
   case "${#__CLI_FILES[@]}" in
   1)
-    # Case: checkit file.txt (or checkit file.txt --algo ...)
-    # This is Generation Mode (Create)
     __CLI_MODE="create"
-    __CLI_FILES=("${__CLI_FILES[0]}") # Keep consistent
+    __CLI_FILES=("${__CLI_FILES[0]}")
     ;;
   2)
-    # Case: checkit file.txt a1b2c3...
-    # This is Quick Verification Mode (Verify String)
     __CLI_MODE="verify_string"
     __CLI_FILE="${__CLI_FILES[0]}"
     __CLI_HASH="${__CLI_FILES[1]}"
     ;;
   *)
-    # 0 arguments or more than 2 (without explicit flags) is ambiguous or an error
-    echo "Error: Invalid number of arguments. Use -h for help."
+    echo "Error: Ambiguous arguments. Use -c for check mode."
     return "$EX_OPERATIONAL_ERROR"
     ;;
   esac

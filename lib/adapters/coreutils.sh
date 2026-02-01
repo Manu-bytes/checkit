@@ -75,13 +75,35 @@ coreutils::check_list() {
 
   if [[ ! -f "$sumfile" ]]; then return "$EX_OPERATIONAL_ERROR"; fi
 
+  # Internal helper to consolidate success reporting.
+  # Handles output formatting and checks for target file signatures.
+  __on_success() {
+    local f_path="$1"
+    local f_algo="$2"
+    local extra_info=""
+
+    # Check if the GPG adapter is loaded and the function exists
+    if type -t gpg::verify_target >/dev/null; then
+      # Attempt to verify independent signature for the target file
+      if gpg::verify_target "$f_path"; then
+        extra_info=" + [SIGNED]"
+      elif [[ $? -eq 3 ]]; then
+        # EX_SECURITY_FAIL: Signature exists but is invalid
+        extra_info=" + [BAD SIG]"
+      fi
+    fi
+
+    # Print success status with optional signature info
+    # Note: extra_info is appended directly to avoid empty parentheses
+    echo "[OK] $f_path ($f_algo)${extra_info}"
+  }
+
   local strict_algo=""
   local family_constraint=""
   local fname_lower
   fname_lower=$(basename "$sumfile" | tr '[:upper:]' '[:lower:]')
 
   # --- 1: STRICT NOMENCLATURE DETECTION ---
-  # Regex looks for specific numbers to prioritize standard formats.
   if [[ "$fname_lower" =~ ^(md5|sha1|sha224|sha256|sha384|sha512) ]]; then
     strict_algo="${BASH_REMATCH[1]}"
   elif [[ "$fname_lower" =~ (b2|blake2) ]]; then
@@ -139,7 +161,7 @@ coreutils::check_list() {
       fi
 
       if coreutils::verify "$strict_algo" "$file_line" "$hash_line"; then
-        echo "[OK] $file_line ($strict_algo)"
+        __on_success "$file_line" "$strict_algo"
         verified_count=$((verified_count + 1))
       else
         echo "[FAILED] $file_line ($strict_algo)"
@@ -154,7 +176,7 @@ coreutils::check_list() {
       fi
 
       if coreutils::verify "$target_algo" "$file_line" "$hash_line"; then
-        echo "[OK] $file_line ($target_algo)"
+        __on_success "$file_line" "$target_algo"
         verified_count=$((verified_count + 1))
       else
         echo "[FAILED] $file_line ($target_algo)"
@@ -172,7 +194,7 @@ coreutils::check_list() {
       fi
 
       if coreutils::verify "$target_algo" "$file_line" "$hash_line"; then
-        echo "[OK] $file_line ($target_algo)"
+        __on_success "$file_line" "$target_algo"
         verified_count=$((verified_count + 1))
       else
         echo "[FAILED] $file_line ($target_algo)"
@@ -182,7 +204,7 @@ coreutils::check_list() {
       # --- 3: MIXED MODE WITH FAMILY PROTECTION ---
       # 1. Attempt detected algorithm
       if coreutils::verify "$detected_algo" "$file_line" "$hash_line"; then
-        echo "[OK] $file_line ($detected_algo)"
+        __on_success "$file_line" "$detected_algo"
         verified_count=$((verified_count + 1))
       else
         local fallback_algo
@@ -197,7 +219,7 @@ coreutils::check_list() {
         local recovered=false
         if [[ -n "$fallback_algo" && "$allow_fallback" == "true" ]]; then
           if coreutils::verify "$fallback_algo" "$file_line" "$hash_line"; then
-            echo "[OK] $file_line ($fallback_algo)"
+            __on_success "$file_line" "$fallback_algo"
             verified_count=$((verified_count + 1))
             recovered=true
           fi
