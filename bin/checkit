@@ -128,8 +128,11 @@ main() {
       fi
     fi
     # --- END SECURITY BLOCK ---
-
-    coreutils::check_list "auto" "$sumfile"
+    local algo_strategy="auto"
+    if [[ "$__CLI_ALGO_SET" == "true" ]]; then
+      algo_strategy="$__CLI_ALGO"
+    fi
+    coreutils::check_list "$algo_strategy" "$sumfile"
     exit $?
     ;;
   "create")
