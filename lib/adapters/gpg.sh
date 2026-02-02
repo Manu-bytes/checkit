@@ -110,3 +110,13 @@ gpg::sign() {
   fi
   return "$EX_OPERATIONAL_ERROR"
 }
+
+# gpg::clearsign_content
+# Signs a text string passed via stdin and returns the signed content.
+# Used for creating signed checksum lists on the fly.
+gpg::clearsign_content() {
+  local content="$1"
+  # Output to stdout
+  echo "$content" | gpg --clearsign -
+  return $?
+}

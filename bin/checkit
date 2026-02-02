@@ -9,6 +9,8 @@ PROJECT_ROOT="$(dirname "$BIN_DIR")"
 source "$PROJECT_ROOT/lib/constants.sh"
 # shellcheck source=lib/core/parser.sh
 source "$PROJECT_ROOT/lib/core/parser.sh"
+# shellcheck source=lib/core/formatter.sh
+source "$PROJECT_ROOT/lib/core/formatter.sh"
 # shellcheck source=lib/core/algorithm_chooser.sh
 source "$PROJECT_ROOT/lib/core/algorithm_chooser.sh"
 # shellcheck source=lib/adapters/coreutils.sh
@@ -131,40 +133,116 @@ main() {
     exit $?
     ;;
   "create")
-    # Generation Mode (-n / implicit)
-    local has_error=false
+    # 1. Determine Algorithms
+    local algos_to_run=()
+    if [[ "$__CLI_ALL_ALGOS" == "true" ]]; then
+      # Standard safe list
+      algos_to_run=("md5" "sha1" "sha256" "sha512" "blake2b")
+    else
+      # Default behavior: Single algo (preserves legacy tests)
+      algos_to_run=("$__CLI_ALGO")
+    fi
+
     local output_buffer=""
+    local has_error=false
+    local first_item=true
 
+    # 2. Header for Structured Formats
+    if [[ "$__CLI_OUTPUT_FMT" == "json" ]]; then
+      output_buffer+="["
+    elif [[ "$__CLI_OUTPUT_FMT" == "xml" ]]; then
+      output_buffer+="<checksums>"
+    fi
+
+    # 3. Main Loop
     for file in "${__CLI_FILES[@]}"; do
-      # Captures output for buffer
-      if hash_line=$(coreutils::calculate "$__CLI_ALGO" "$file"); then
-        echo "$hash_line"
-
-        # Accumulates in buffer for clipboard
-        if [[ -n "$output_buffer" ]]; then
-          output_buffer+=$'\n'
-        fi
-        output_buffer+="$hash_line"
-      else
-        echo "Error: Failed to calculate hash for $file" >&2
+      # Fail fast validation (Standard behavior)
+      if [[ ! -f "$file" ]]; then
+        echo "checkit: $file: No such file or directory" >&2
         has_error=true
+        continue
       fi
+
+      for algo in "${algos_to_run[@]}"; do
+        # Execute Calculation
+        # coreutils::calculate returns standard "HASH  FILE" string
+        if raw_line=$(coreutils::calculate "$algo" "$file"); then
+
+          # Extract Hash (assuming standard GNU format output from adapter)
+          # $1 is hash, $2... is filename (handled by formatter separately)
+          local hash
+          hash=$(echo "$raw_line" | awk '{print $1}')
+
+          # Handle Separators (JSON logic)
+          if [[ "$__CLI_OUTPUT_FMT" == "json" ]]; then
+            if [[ "$first_item" == "true" ]]; then
+              output_buffer+=$'\n'
+            else
+              output_buffer+=","$'\n'
+            fi
+          elif [[ "$__CLI_OUTPUT_FMT" == "xml" ]]; then
+            output_buffer+=$'\n'
+          elif [[ "$first_item" == "false" ]]; then
+            # Standard newline for text modes
+            output_buffer+=$'\n'
+          fi
+          first_item=false
+
+          # Format Output
+          # Defaults to "gnu" which replicates original behavior exactly
+          local formatted
+          formatted=$(core::format_hash "$__CLI_OUTPUT_FMT" "$algo" "$file" "$hash")
+          output_buffer+="$formatted"
+        else
+          echo "Error: Failed to calculate $algo for $file" >&2
+          has_error=true
+        fi
+      done
     done
 
-    # Clipboard Logic
+    # 4. Footer for Structured Formats
+    if [[ "$__CLI_OUTPUT_FMT" == "json" ]]; then
+      output_buffer+=$'\n]'
+    elif [[ "$__CLI_OUTPUT_FMT" == "xml" ]]; then
+      output_buffer+=$'\n</checksums>'
+    fi
+
+    # 5. Signing Logic (Optional)
+    if [[ "$__CLI_SIGN" == "true" ]]; then
+
+      if [[ "$__CLI_OUTPUT_FMT" == "gnu" && "$__CLI_ALL_ALGOS" == "false" ]]; then
+        # MIME-style format: Header + blank line + body
+        output_buffer="Content-Hash: ${__CLI_ALGO}"$'\n\n'"$output_buffer"
+      fi
+
+      if signed_content=$(gpg::clearsign_content "$output_buffer"); then
+        output_buffer="$signed_content"
+      else
+        echo "Error: GPG signing failed." >&2
+        exit "$EX_OPERATIONAL_ERROR"
+      fi
+    fi
+
+    # 6. Final Output (Replaces the inline echo)
+    if [[ "$__CLI_ZERO" == "true" ]]; then
+      printf "%s\0" "$output_buffer"
+    else
+      # If buffer is empty (e.g. no files found), echo nothing just like loop would
+      if [[ -n "$output_buffer" ]]; then
+        echo "$output_buffer"
+      fi
+    fi
+
+    # 7. Clipboard Logic (Preserved)
     if [[ "$__CLI_COPY" == "true" && -n "$output_buffer" ]]; then
       if utils::copy_to_clipboard "$output_buffer"; then
-        # Optional feedback message (stderr)
         echo "   [Context] Copied to clipboard." >&2
       else
         echo "   [Warning] Failed to copy (no clipboard tool found)." >&2
       fi
     fi
 
-    if [[ "$has_error" == "true" ]]; then
-      exit "$EX_OPERATIONAL_ERROR"
-    fi
-
+    if [[ "$has_error" == "true" ]]; then exit "$EX_OPERATIONAL_ERROR"; fi
     exit "$EX_SUCCESS"
     ;;
   *)

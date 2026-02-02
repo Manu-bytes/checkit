@@ -70,6 +70,8 @@ teardown() {
   assert_output --partial "[MISSING] missing.txt"
 
   refute_output --partial "[OK]"
+
+  rm -f "$clean_sumfile"
 }
 
 # --- 4. --warn ---
