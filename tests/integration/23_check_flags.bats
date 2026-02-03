@@ -22,11 +22,12 @@ setup() {
     echo "GARBAGE_LINE_NO_FORMAT"
     echo "$HASH_VALID  missing.txt"
   } >"$SUMFILE"
+  CLEAN_SUMFILE="clean.txt"
 }
 
 teardown() {
   rm -rf "$MOCK_BIN_DIR"
-  rm -f "$DATA_FILE" "$SUMFILE"
+  rm -f "$DATA_FILE" "$SUMFILE" "$CLEAN_SUMFILE"
 }
 
 # --- 1. --ignore-missing ---
@@ -56,10 +57,9 @@ teardown() {
 # --- 3. --status ---
 
 @test "Flags: --status suppresses OK output but shows system errors" {
-  local clean_sumfile="clean.txt"
-  echo "$HASH_VALID  $DATA_FILE" >"$clean_sumfile"
+  echo "$HASH_VALID  $DATA_FILE" >"$CLEAN_SUMFILE"
 
-  run "$CHECKIT_EXEC" -c "$clean_sumfile" --status
+  run "$CHECKIT_EXEC" -c "$CLEAN_SUMFILE" --status
   assert_success
   assert_output ""
 
@@ -70,8 +70,6 @@ teardown() {
   assert_output --partial "[MISSING] missing.txt"
 
   refute_output --partial "[OK]"
-
-  rm -f "$clean_sumfile"
 }
 
 # --- 4. --warn ---
