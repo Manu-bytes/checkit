@@ -18,6 +18,8 @@ __CLI_ALL_ALGOS=false       # Flag --all
 __CLI_SIGN=false            # Flag --sign
 __CLI_ZERO=false            # Flag --zero
 __CLI_OUTPUT_FMT="gnu"      # Default output format (gnu, bsd, json, xml)
+__CLI_OUTPUT_FILE=""        # File to store hashes (-f)
+__CLI_SIGN_MODE=""          # Signature mode: "clear" for inline/cleartext or "detach" for detached file
 
 # cli::print_usage
 cli::print_usage() {
@@ -36,7 +38,10 @@ General Options:
 
 Create Mode Options:
       --all             Generate hashes using all safe algorithms
-  -s, --sign            Sign the output using GPG (creates .asc content)
+  -s, --sign            Sign the output using GPG (default: clearsign)
+      --detach-sign     Create a detached signature (requires writing to file)
+  -f, --file <name>     Save checksums to file (default 'CHECKSUMS' if using --detach-sign)
+      --armor           Create ASCII armored output (.asc)
   -o, --output <fmt>    Output format: text (gnu), bsd, json, xml
       --tag             Force BSD style output (alias for --output bsd)
   -z, --zero            End each output line with NUL, not newline
@@ -117,7 +122,21 @@ cli::parse_args() {
       shift
       ;;
     -s | --sign)
+      __CLI_SIGN_MODE="clear"
       __CLI_SIGN=true
+      shift
+      ;;
+    --detach-sign)
+      __CLI_SIGN_MODE="detach"
+      __CLI_SIGN=true
+      shift
+      ;;
+    -f | --file)
+      __CLI_OUTPUT_FILE="$2"
+      shift 2
+      ;;
+    --armor)
+      __CLI_SIGN_ARMOR=true
       shift
       ;;
     -z | --zero)
