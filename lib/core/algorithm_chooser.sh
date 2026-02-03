@@ -128,9 +128,10 @@ core::identify_from_file() {
 
     if [[ -z "$line" ]]; then continue; fi
 
-    # --- 1: GPG HEADER DETECTION ---
-    # Matches: "Hash: SHA256", "Hash: b2-128", "Hash: SHA-512"
-    if [[ "$line" =~ ^Hash:[[:space:]]*([A-Za-z0-9-]+) ]]; then
+    # --- 1: CONTENT-HASH HEADER DETECTION ---
+    # Matches: "Content-Hash: SHA256", "Content-Hash: blake2b"
+    # STRICTLY ignores standard GPG "Hash:" header to avoid signature confusion.
+    if [[ "$line" =~ ^Content-Hash:[[:space:]]*([A-Za-z0-9-]+) ]]; then
       local raw_algo="${BASH_REMATCH[1]}"
 
       # 1. Normalize to lowercase

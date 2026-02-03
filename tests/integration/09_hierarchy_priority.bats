@@ -49,11 +49,15 @@ teardown() {
   assert_success
 }
 
-@test "Hierarchy L2: Internal Metadata (Hash: SHA1) enforces algo on generic filename" {
+@test "Hierarchy L2: Internal Metadata (Content-Hash: SHA1) enforces algo on generic filename" {
   local sumfile="generic_meta.txt"
-  echo "-----BEGIN PGP SIGNED MESSAGE-----" >"$sumfile"
-  echo "Hash: SHA1" >>"$sumfile"
-  echo "" >>"$sumfile"
+  {
+    echo "-----BEGIN PGP SIGNED MESSAGE-----"
+    echo "Hash: SHA512"
+    echo ""
+    echo "Content-Hash: SHA1"
+  } >>$sumfile
+
   echo "$HASH_SHA1  $DATA_FILE" >>"$sumfile"
   echo "$HASH_SHA256  $DATA_FILE" >>"$sumfile"
 

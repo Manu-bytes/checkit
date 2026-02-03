@@ -116,12 +116,11 @@ coreutils::verify() {
 
 # coreutils::check_list
 coreutils::check_list() {
-  local _ignored="$1"
+  local forced_cli_algo="$1"
   local sumfile="$2"
 
   if [[ ! -f "$sumfile" ]]; then return "$EX_OPERATIONAL_ERROR"; fi
 
-  # Internal helper to consolidate success reporting.
   __on_success() {
     local f_path="$1"
     local f_algo="$2"
@@ -130,6 +129,7 @@ coreutils::check_list() {
     if [[ "$__CLI_QUIET" == "true" || "$__CLI_STATUS" == "true" ]]; then
       return
     fi
+
     if type -t gpg::verify_target >/dev/null; then
       if gpg::verify_target "$f_path"; then
         extra_info=" + [SIGNED]"
@@ -141,32 +141,32 @@ coreutils::check_list() {
     echo "[OK] $f_path ($f_algo)${extra_info}"
   }
 
-  local strict_algo=""
-  local family_constraint=""
-  local fname_lower
-  fname_lower=$(basename "$sumfile" | tr '[:upper:]' '[:lower:]')
+  __on_failure() {
+    local f_file="$1"
+    local f_algo="$2"
+    if [[ "$__CLI_STATUS" == "true" ]]; then return; fi
+    echo "[FAILED] $f_file ($f_algo)"
+  }
 
-  # --- 1: STRICT NOMENCLATURE DETECTION ---
-  if [[ "$fname_lower" =~ ^(md5|sha1|sha224|sha256|sha384|sha512) ]]; then
-    strict_algo="${BASH_REMATCH[1]}"
-  elif [[ "$fname_lower" =~ (b2|blake2) ]]; then
-    strict_algo="blake_family"
-  elif [[ "$fname_lower" =~ sha ]]; then
-    strict_algo="sha_family"
+  # --- CONTEXT DETECTION ---
+  local context_algo=""
+
+  # 1. Content-Hash (Strong Context)
+  if meta_algo=$(core::identify_from_file "$sumfile"); then
+    context_algo="$meta_algo"
   fi
 
-  # --- 1.5: FAMILY RESTRICTION (Generic) ---
-  if [[ -z "$strict_algo" ]]; then
-    if [[ "$fname_lower" == *"md5"* ]]; then
-      family_constraint="gnu"
-    fi
-  fi
+  # 2. Filename (Medium Context)
+  if [[ -z "$context_algo" ]]; then
+    local fname_lower
+    fname_lower=$(basename "$sumfile" | tr '[:upper:]' '[:lower:]')
 
-  # --- 2: DETECTION BY INTERNAL METADATA ---
-  if [[ -z "$strict_algo" ]]; then
-    local meta_algo
-    if meta_algo=$(core::identify_from_file "$sumfile"); then
-      strict_algo="$meta_algo"
+    if [[ "$fname_lower" =~ ^(md5|sha1|sha224|sha256|sha384|sha512) ]]; then
+      context_algo="${BASH_REMATCH[1]}"
+    elif [[ "$fname_lower" =~ (b2|blake2) ]]; then
+      context_algo="blake_family"
+    elif [[ "$fname_lower" =~ sha ]]; then
+      context_algo="sha_family"
     fi
   fi
 
@@ -183,134 +183,115 @@ coreutils::check_list() {
       fi
       continue
     fi
-    local detected_algo
+
+    local parsed_algo
     local hash_line
     local file_line
-    detected_algo=$(echo "$parsed" | cut -d'|' -f1)
+    parsed_algo=$(echo "$parsed" | cut -d'|' -f1)
     hash_line=$(echo "$parsed" | cut -d'|' -f2)
     file_line=$(echo "$parsed" | cut -d'|' -f3)
 
     if [[ ! -f "$file_line" ]]; then
-      if [[ "$__CLI_IGNORE_MISSING" == "true" ]]; then
-        continue # Saltamos silenciosamente, no cuenta como fallo
-      fi
-      echo "[MISSING] $file_line"
+      if [[ "$__CLI_IGNORE_MISSING" == "true" ]]; then continue; fi
+      echo "[MISSING] $file_line" >&2
       failures=$((failures + 1))
       continue
     fi
 
-    # --- 2.5: HIERARCHICAL VERIFICATION LOGIC ---
-    if [[ -n "$strict_algo" && "$strict_algo" != *"_family" ]]; then
-      # CASE: Specific Algorithm (sha256sum)
-      local expected_len
-      # UPDATED CALL: coreutils::get_algo_length
-      expected_len=$(coreutils::get_algo_length "$strict_algo")
+    # --- ALGORITHM SELECTION ---
+    local target_algo=""
+    local allow_fallback=true
 
-      if [[ "${#hash_line}" -ne "$expected_len" ]]; then
-        echo "[SKIPPED] $file_line (Format mismatch: expected $strict_algo)"
-        continue
-      fi
+    # 1. CLI Override (Override Total)
+    if [[ "$forced_cli_algo" != "auto" ]]; then
+      target_algo="$forced_cli_algo"
+      allow_fallback=false
 
-      if coreutils::verify "$strict_algo" "$file_line" "$hash_line"; then
-        __on_success "$file_line" "$strict_algo"
-        verified_count=$((verified_count + 1))
-      else
-        echo "[FAILED] $file_line ($strict_algo)"
-        failures=$((failures + 1))
-      fi
+    # 2. BSD Tags (Override Contextual)
+    elif [[ "$line" =~ ^[A-Za-z0-9-]+[[:space:]]*\(.+\)[[:space:]]*=[[:space:]]*[a-fA-F0-9]+ ]]; then
+      target_algo="$parsed_algo"
+      allow_fallback=false
 
-    elif [[ "$strict_algo" == "blake_family" ]]; then
-      # CASE: Blake Family Dynamics
-      local target_algo="$detected_algo"
-      if [[ "$detected_algo" == "sha"* || "$detected_algo" == "md5" ]]; then
-        target_algo=$(coreutils::get_fallback_algo "$detected_algo")
-      fi
-
-      if coreutils::verify "$target_algo" "$file_line" "$hash_line"; then
-        __on_success "$file_line" "$target_algo"
-        verified_count=$((verified_count + 1))
-      else
-        echo "[FAILED] $file_line ($target_algo)"
-        failures=$((failures + 1))
-      fi
-
-    elif [[ "$strict_algo" == "sha_family" ]]; then
-      # CASE: SHA Family Dynamics
-      local target_algo
-      target_algo=$(__get_sha_by_length "${#hash_line}")
-
-      if [[ -z "$target_algo" ]]; then
-        echo "[SKIPPED] $file_line (Not a SHA hash)"
-        continue
-      fi
-
-      if coreutils::verify "$target_algo" "$file_line" "$hash_line"; then
-        __on_success "$file_line" "$target_algo"
-        verified_count=$((verified_count + 1))
-      else
-        echo "[FAILED] $file_line ($target_algo)"
-        failures=$((failures + 1))
-      fi
-    else
-      # --- 3: MIXED MODE WITH FAMILY PROTECTION ---
-      # 1. Attempt detected algorithm
-      if coreutils::verify "$detected_algo" "$file_line" "$hash_line"; then
-        __on_success "$file_line" "$detected_algo"
-        verified_count=$((verified_count + 1))
-      else
-        local fallback_algo
-        fallback_algo=$(coreutils::get_fallback_algo "$detected_algo")
-        local allow_fallback=true
-
-        # Legacy MD5 fallback constraint
-        if [[ "$family_constraint" == "gnu" && "$fallback_algo" == "blake"* ]]; then
-          allow_fallback=false
+    # 3. Strict context (e.g., SHA256SUMS or content-hash)
+    elif [[ -n "$context_algo" ]]; then
+      if [[ "$context_algo" == "sha_family" ]]; then
+        target_algo=$(__get_sha_by_length "${#hash_line}")
+        if [[ -z "$target_algo" ]]; then
+          echo "[SKIPPED] $file_line (Not a SHA hash)"
+          continue
         fi
+        allow_fallback=false
+      elif [[ "$context_algo" == "blake_family" ]]; then
+        if [[ "$parsed_algo" == "blake"* ]] || [[ "$parsed_algo" == "b2"* ]]; then
+          target_algo="$parsed_algo"
+        else
+          target_algo=$(coreutils::get_fallback_algo "$parsed_algo")
+        fi
+        allow_fallback=false
+      else
 
-        local recovered=false
-        if [[ -n "$fallback_algo" && "$allow_fallback" == "true" ]]; then
-          if coreutils::verify "$fallback_algo" "$file_line" "$hash_line"; then
-            __on_success "$file_line" "$fallback_algo"
+        # Case: Specific algorithm (md5, sha256, blake2-256)
+        local ctx_len
+        ctx_len=$(coreutils::get_algo_length "$context_algo")
+        if [[ "${#hash_line}" -ne "$ctx_len" ]]; then
+          echo "[SKIPPED] $file_line (Format mismatch: expected $context_algo)"
+          continue
+        fi
+        target_algo="$context_algo"
+        allow_fallback=false
+      fi
+
+    # 4. Mixed / Neutral mode
+    else
+      target_algo="$parsed_algo"
+    fi
+
+    # --- VERIFICATION ---
+    if [[ -z "$target_algo" ]]; then continue; fi
+    local expected_len
+    expected_len=$(coreutils::get_algo_length "$target_algo")
+    if [[ "$expected_len" -gt 0 && "${#hash_line}" -ne "$expected_len" ]]; then
+      echo "[FAILED] $file_line (Format mismatch)"
+      failures=$((failures + 1))
+      continue
+    fi
+
+    if coreutils::verify "$target_algo" "$file_line" "$hash_line"; then
+      __on_success "$file_line" "$target_algo"
+      verified_count=$((verified_count + 1))
+    else
+      local recovered=false
+      if [[ "$allow_fallback" == "true" ]]; then
+        local fallback
+        fallback=$(coreutils::get_fallback_algo "$target_algo")
+        if [[ -n "$fallback" ]]; then
+          if coreutils::verify "$fallback" "$file_line" "$hash_line"; then
+            __on_success "$file_line" "$fallback"
             verified_count=$((verified_count + 1))
             recovered=true
           fi
         fi
+      fi
 
-        if [[ "$recovered" == "false" ]]; then
-          echo "[FAILED] $file_line ($detected_algo)"
-          failures=$((failures + 1))
-        fi
+      if [[ "$recovered" == "false" ]]; then
+        __on_failure "$file_line" "$target_algo"
+        failures=$((failures + 1))
       fi
     fi
+
   done 3<"$sumfile"
 
-  # --- POST-LOOP REPORTING ---
-
-  # 1. Warn about improper formatting
   if [[ "$bad_lines" -gt 0 ]]; then
     if [[ "$__CLI_WARN" == "true" || "$__CLI_STRICT" == "true" ]]; then
       echo "checkit: WARNING: $bad_lines line is improperly formatted" >&2
     fi
   fi
-
-  # 2. Exit Status Logic
-  # Priority: Bad format with --strict takes precedence?
-  # GNU sha256sum: Exit 1 if checksum mismatch OR missing file OR bad format (w/ strict)
   if [[ "$failures" -gt 0 ]]; then return "$EX_INTEGRITY_FAIL"; fi
-
-  if [[ "$bad_lines" -gt 0 && "$__CLI_STRICT" == "true" ]]; then
-    return "$EX_INTEGRITY_FAIL"
-  fi
-
-  # Special case: if --ignore-missing is enabled and we verified nothing because everything was missing:
-  # GNU sha256sum returns 0 when --ignore-missing is enabled, even if it verified nothing.
+  if [[ "$bad_lines" -gt 0 && "$__CLI_STRICT" == "true" ]]; then return "$EX_INTEGRITY_FAIL"; fi
   if [[ "$verified_count" -eq 0 ]]; then
-    if [[ "$__CLI_IGNORE_MISSING" == "true" ]]; then
-      return "$EX_SUCCESS"
-    fi
+    if [[ "$__CLI_IGNORE_MISSING" == "true" ]]; then return "$EX_SUCCESS"; fi
     return "$EX_OPERATIONAL_ERROR"
   fi
-
   return "$EX_SUCCESS"
 }
 

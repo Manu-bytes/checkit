@@ -11,23 +11,40 @@ __CLI_COPY=false            # Clipboard flag
 __CLI_QUIET=false           # Quiet flag
 __CLI_STATUS=false          # Status only flag
 __CLI_STRICT_SECURITY=false # Verify GPG signatures strictly
-__CLI_IGNORE_MISSING=false
-__CLI_STRICT=false
-__CLI_WARN=false
+__CLI_IGNORE_MISSING=false  # Ignore missing files when processing
+__CLI_STRICT=false          # Fail on any non-fatal warnings / enforce strict mode
+__CLI_WARN=false            # Show warnings (overrides quiet for warnings)
+__CLI_ALL_ALGOS=false       # Flag --all
+__CLI_SIGN=false            # Flag --sign
+__CLI_ZERO=false            # Flag --zero
+__CLI_OUTPUT_FMT="gnu"      # Default output format (gnu, bsd, json, xml)
+__CLI_OUTPUT_FILE=""        # File to store hashes (-f)
+__CLI_SIGN_MODE=""          # Signature mode: "clear" for inline/cleartext or "detach" for detached file
 
 # cli::print_usage
 cli::print_usage() {
   cat <<EOF
 Usage:
   checkit [FILE] [HASH]             # Quick Verify
-  checkit [FILE] [--algo ALGO]      # Calculate Hash
-  checkit -c [SUMFILE] [OPTIONS]    # Check multiple hashes
+  checkit [FILE] [OPTIONS]          # Calculate Hash (Create Mode)
+  checkit -c [SUMFILE] [OPTIONS]    # Check multiple hashes (Check Mode)
 
-Options:
-  -c, --check           Read checksums from file
-  -a, --algo <alg>      Specify algorithm (md5, sha256, etc). Default: sha256
+General Options:
+  -a, --algo <alg>      Specify algorithm (md5, sha256, blake2b, etc). Default: sha256
   -v, --verify-sign     Verify GPG signature if present (enforces strict mode)
   -y, --copy            Copy output to clipboard
+  -h, --help            Show this help
+      --version         Show version
+
+Create Mode Options:
+      --all             Generate hashes using all safe algorithms
+  -s, --sign            Sign the output using GPG (default: clearsign)
+      --detach-sign     Create a detached signature (requires writing to file)
+  -f, --file <name>     Save checksums to file (default 'CHECKSUMS' if using --detach-sign)
+      --armor           Create ASCII armored output (.asc)
+  -o, --output <fmt>    Output format: text (gnu), bsd, json, xml
+      --tag             Force BSD style output (alias for --output bsd)
+  -z, --zero            End each output line with NUL, not newline
 
 Check Mode Options:
       --ignore-missing  Don't fail or report status for missing files
@@ -35,10 +52,6 @@ Check Mode Options:
       --status          Don't output anything, status code shows success
       --strict          Exit non-zero for improperly formatted checksum lines
   -w, --warn            Warn about improperly formatted checksum lines
-  -q, --quiet           Don't print OK
-
-  -h, --help            Show this help
-      --version         Show version
 EOF
 }
 
@@ -104,12 +117,53 @@ cli::parse_args() {
       __CLI_STATUS=true
       shift
       ;;
+    --all)
+      __CLI_ALL_ALGOS=true
+      shift
+      ;;
+    -s | --sign)
+      __CLI_SIGN_MODE="clear"
+      __CLI_SIGN=true
+      shift
+      ;;
+    --detach-sign)
+      __CLI_SIGN_MODE="detach"
+      __CLI_SIGN=true
+      shift
+      ;;
+    -f | --file)
+      __CLI_OUTPUT_FILE="$2"
+      shift 2
+      ;;
+    --armor)
+      __CLI_SIGN_ARMOR=true
+      shift
+      ;;
+    -z | --zero)
+      __CLI_ZERO=true
+      shift
+      ;;
+    --tag)
+      __CLI_OUTPUT_FMT="bsd"
+      shift
+      ;;
+    -o | --output)
+      local fmt="$2"
+      if [[ "$fmt" =~ ^(text|gnu|bsd|json|xml)$ ]]; then
+        [[ "$fmt" == "text" ]] && fmt="gnu"
+        __CLI_OUTPUT_FMT="$fmt"
+      else
+        echo "Error: Invalid output format '$fmt'. Use: text, gnu, bsd, json."
+        return "$EX_OPERATIONAL_ERROR"
+      fi
+      shift 2
+      ;;
     -h | --help)
       cli::print_usage
       exit "$EX_SUCCESS"
       ;;
     --version)
-      echo "checkit v0.8.0"
+      echo "checkit v0.9.0"
       exit "$EX_SUCCESS"
       ;;
     -*)

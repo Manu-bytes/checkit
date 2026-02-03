@@ -110,3 +110,58 @@ gpg::sign() {
   fi
   return "$EX_OPERATIONAL_ERROR"
 }
+
+# gpg::sign_data
+# Signs data passed via stdin using the specified mode.
+# Args:
+#   $1 - content string
+#   $2 - mode ("clear", "detach", "standard")
+#   $3 - armor ("true" or "false")
+gpg::sign_data() {
+  local content="$1"
+  local mode="$2"
+  local armor="$3"
+  local args=()
+
+  case "$mode" in
+  detach)
+    args+=("--detach-sign")
+    ;;
+  standard)
+    args+=("--sign")
+    ;;
+  *)
+    # Default: Clearsign
+    args+=("--clearsign")
+    ;;
+  esac
+
+  # 2. Armor
+  if [[ "$armor" == "true" ]]; then
+    args+=("--armor")
+  fi
+  echo "$content" | gpg "${args[@]}" -
+  return $?
+}
+
+# gpg::sign_file
+# Creates a detached signature for a file on disk.
+# Args:
+#   $1 - file path to sign
+#   $2 - armor ("true" or "false")
+gpg::sign_file() {
+  local file="$1"
+  local armor="$2"
+
+  local args=("--detach-sign")
+
+  if [[ "$armor" == "true" ]]; then
+    args+=("--armor")
+  fi
+
+  if gpg "${args[@]}" "$file"; then
+    return "$EX_SUCCESS"
+  else
+    return "$EX_OPERATIONAL_ERROR"
+  fi
+}
