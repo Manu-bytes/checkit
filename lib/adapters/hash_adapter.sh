@@ -4,7 +4,7 @@
 # Execute standard binaries such as sha256sum, md5sum, b2sum.
 __exec_native() {
   local cmd_bin="$1"
-  local ref_name="$2" # El nombre de la variable array del caller (ej: "args")
+  local ref_name="$2" # The caller's array variable name (e.g., "args")
   local file="$3"
   local expected_hash="${4:-}"
 
@@ -58,7 +58,7 @@ __get_sha_by_length() {
 }
 
 # --- PUBLIC HELPER: Get Algo Length ---
-coreutils::get_algo_length() {
+hash_adapter::get_algo_length() {
   local algo="$1"
 
   if [[ "$algo" =~ ^blake2-([0-9]+)$ ]]; then
@@ -79,7 +79,7 @@ coreutils::get_algo_length() {
 }
 
 # --- PUBLIC HELPER: Fallback Resolver ---
-coreutils::get_fallback_algo() {
+hash_adapter::get_fallback_algo() {
   local algo="$1"
   case "$algo" in
   md5) echo "blake2-128" ;;
@@ -93,7 +93,7 @@ coreutils::get_fallback_algo() {
 }
 
 # --- MAIN: VERIFY ---
-coreutils::verify() {
+hash_adapter::verify() {
   local raw_algo="$1"
   local file="$2"
   local expected_hash="$3"
@@ -107,7 +107,7 @@ coreutils::verify() {
 
   # 2. Length Validation
   local expected_len
-  expected_len=$(coreutils::get_algo_length "$algo")
+  expected_len=$(hash_adapter::get_algo_length "$algo")
   if [[ "$expected_len" -gt 0 && "${#expected_hash}" -ne "$expected_len" ]]; then
     return "$EX_INTEGRITY_FAIL"
   fi
@@ -158,7 +158,7 @@ coreutils::verify() {
 }
 
 # --- MAIN: CALCULATE ---
-coreutils::calculate() {
+hash_adapter::calculate() {
   local algo="$1"
   local file="$2"
 
@@ -199,8 +199,8 @@ coreutils::calculate() {
   fi
 }
 
-# coreutils::check_list
-coreutils::check_list() {
+# hash_adapter::check_list
+hash_adapter::check_list() {
   local forced_cli_algo="$1"
   local sumfile="$2"
 
@@ -311,13 +311,13 @@ coreutils::check_list() {
         if [[ "$parsed_algo" == "blake"* ]] || [[ "$parsed_algo" == "b2"* ]]; then
           target_algo="$parsed_algo"
         else
-          target_algo=$(coreutils::get_fallback_algo "$parsed_algo")
+          target_algo=$(hash_adapter::get_fallback_algo "$parsed_algo")
         fi
         allow_fallback=false
 
       else
         local ctx_len
-        ctx_len=$(coreutils::get_algo_length "$context_algo")
+        ctx_len=$(hash_adapter::get_algo_length "$context_algo")
         if [[ "${#hash_line}" -ne "$ctx_len" ]]; then
           echo "[SKIPPED] $file_line (Format mismatch: expected $context_algo)"
           continue
@@ -335,23 +335,23 @@ coreutils::check_list() {
     if [[ -z "$target_algo" ]]; then continue; fi
 
     local expected_len
-    expected_len=$(coreutils::get_algo_length "$target_algo")
+    expected_len=$(hash_adapter::get_algo_length "$target_algo")
     if [[ "$expected_len" -gt 0 && "${#hash_line}" -ne "$expected_len" ]]; then
       echo "[FAILED] $file_line (Format mismatch)"
       failures=$((failures + 1))
       continue
     fi
 
-    if coreutils::verify "$target_algo" "$file_line" "$hash_line"; then
+    if hash_adapter::verify "$target_algo" "$file_line" "$hash_line"; then
       __on_success "$file_line" "$target_algo"
       verified_count=$((verified_count + 1))
     else
       local recovered=false
       if [[ "$allow_fallback" == "true" ]]; then
         local fallback
-        fallback=$(coreutils::get_fallback_algo "$target_algo")
+        fallback=$(hash_adapter::get_fallback_algo "$target_algo")
         if [[ -n "$fallback" ]]; then
-          if coreutils::verify "$fallback" "$file_line" "$hash_line"; then
+          if hash_adapter::verify "$fallback" "$file_line" "$hash_line"; then
             __on_success "$file_line" "$fallback"
             verified_count=$((verified_count + 1))
             recovered=true

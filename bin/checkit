@@ -13,8 +13,8 @@ source "$PROJECT_ROOT/lib/core/parser.sh"
 source "$PROJECT_ROOT/lib/core/formatter.sh"
 # shellcheck source=lib/core/algorithm_chooser.sh
 source "$PROJECT_ROOT/lib/core/algorithm_chooser.sh"
-# shellcheck source=lib/adapters/coreutils.sh
-source "$PROJECT_ROOT/lib/adapters/coreutils.sh"
+# shellcheck source=lib/adapters/hash_adapter.sh
+source "$PROJECT_ROOT/lib/adapters/hash_adapter.sh"
 # shellcheck source=lib/adapters/gpg.sh
 source "$PROJECT_ROOT/lib/adapters/gpg.sh"
 # shellcheck source=lib/cli/args.sh
@@ -44,7 +44,7 @@ do_verify_string() {
 
   # 2. Primary Verification Attempt
   # We use a subshell or capture exit code specifically to handle the fallback logic logic manually
-  if coreutils::verify "$algo" "$file" "$hash"; then
+  if hash_adapter::verify "$algo" "$file" "$hash"; then
     echo "[OK] $file ($algo)"
     return "$EX_SUCCESS"
   fi
@@ -53,11 +53,11 @@ do_verify_string() {
   # Only attempt if the user did NOT enforce a specific algorithm via --algo
   if [[ "$__CLI_ALGO_SET" == "false" ]]; then
     local fallback_algo
-    fallback_algo=$(coreutils::get_fallback_algo "$algo")
+    fallback_algo=$(hash_adapter::get_fallback_algo "$algo")
 
     if [[ -n "$fallback_algo" ]]; then
       # Retry with fallback
-      if coreutils::verify "$fallback_algo" "$file" "$hash"; then
+      if hash_adapter::verify "$fallback_algo" "$file" "$hash"; then
         echo "[OK] $file ($fallback_algo)"
         return "$EX_SUCCESS"
       fi
@@ -132,7 +132,7 @@ main() {
     if [[ "$__CLI_ALGO_SET" == "true" ]]; then
       algo_strategy="$__CLI_ALGO"
     fi
-    coreutils::check_list "$algo_strategy" "$sumfile"
+    hash_adapter::check_list "$algo_strategy" "$sumfile"
     exit $?
     ;;
   "create")
@@ -168,8 +168,8 @@ main() {
 
       for algo in "${algos_to_run[@]}"; do
         # Execute Calculation
-        # coreutils::calculate returns standard "HASH  FILE" string
-        if raw_line=$(coreutils::calculate "$algo" "$file"); then
+        # hash_adapter::calculate returns standard "HASH  FILE" string
+        if raw_line=$(hash_adapter::calculate "$algo" "$file"); then
 
           # Extract Hash (assuming standard GNU format output from adapter)
           # $1 is hash, $2... is filename (handled by formatter separately)
