@@ -5,27 +5,6 @@ load '../test_helper'
 setup() {
   source "$PROJECT_ROOT/lib/constants.sh"
 
-  # Mock binaries to simulate collision behavior
-  MOCK_BIN_DIR="$BATS_TMPDIR/checkit_mocks_fallback"
-  mkdir -p "$MOCK_BIN_DIR"
-  export PATH="$MOCK_BIN_DIR:$PATH"
-
-  # 1. Mock sha256sum: ALWAYS FAILS
-  # This simulates attempting SHA256 on a BLAKE2 hash.
-  cat <<EOF >"$MOCK_BIN_DIR/sha256sum"
-#!/bin/bash
-exit 1
-EOF
-  chmod +x "$MOCK_BIN_DIR/sha256sum"
-
-  # 2. Mock b2sum: ALWAYS SUCCEEDS
-  # This simulates the fallback succeeding.
-  cat <<EOF >"$MOCK_BIN_DIR/b2sum"
-#!/bin/bash
-exit 0
-EOF
-  chmod +x "$MOCK_BIN_DIR/b2sum"
-
   # Create dummy file and sumfile
   DATA_FILE="data.iso"
   touch "$DATA_FILE"
@@ -36,6 +15,25 @@ EOF
   HASH_64=$(printf 'a%.0s' {1..64})
   NEUTRAL_SUMFILE="neutral_hashes.txt"
   echo "$HASH_64  $DATA_FILE" >"$NEUTRAL_SUMFILE"
+
+  # Mock binaries to simulate collision behavior
+  MOCK_BIN_DIR="$BATS_TMPDIR/checkit_mocks_fallback"
+  LOG_FILE="$BATS_TMPDIR/fallback_calls.log"
+  rm -f "$LOG_FILE"
+
+  setup_integration_mocks "$MOCK_BIN_DIR" "$LOG_FILE"
+
+  # 1. Mock sha256sum: ALWAYS FAILS
+  cat <<EOF >"$MOCK_BIN_DIR/sha256sum"
+#!/bin/bash
+cat > /dev/null
+echo "SHA256SUM_CALLED" >> "$LOG_FILE"
+exit 1
+EOF
+  chmod +x "$MOCK_BIN_DIR/sha256sum"
+  cp "$MOCK_BIN_DIR/sha256sum" "$MOCK_BIN_DIR/shasum"
+
+  export PATH="$MOCK_BIN_DIR:$PATH"
 }
 
 teardown() {
@@ -45,7 +43,6 @@ teardown() {
 
 @test "Integration: checkit falls back to BLAKE2-256 if SHA-256 verification fails" {
   run "$CHECKIT_EXEC" -c "$NEUTRAL_SUMFILE"
-
   assert_success
 
   # It should report OK using the fallback algorithm
@@ -53,4 +50,10 @@ teardown() {
 
   # It should NOT report failure for sha256
   refute_output --partial "[FAILED]"
+
+  # We verify the flow in the log:
+  run grep "SHA256SUM_CALLED" "$LOG_FILE"
+  assert_success
+  run grep "B2SUM_CALLED" "$LOG_FILE"
+  assert_success
 }

@@ -5,23 +5,24 @@ load '../test_helper'
 setup() {
   source "$PROJECT_ROOT/lib/constants.sh"
 
-  MOCK_BIN_DIR="$BATS_TMPDIR/checkit_mocks_flags"
-  mkdir -p "$MOCK_BIN_DIR"
-  export PATH="$MOCK_BIN_DIR:$PATH"
-
-  echo -e "#!/bin/bash\nexit 0" >"$MOCK_BIN_DIR/sha256sum"
-  chmod +x "$MOCK_BIN_DIR/sha256sum"
-
   DATA_FILE="exists.txt"
   touch "$DATA_FILE"
+
   HASH_VALID=$(printf 'a%.0s' {1..64})
+
+  MOCK_BIN_DIR="$BATS_TMPDIR/checkit_mocks_flags"
+  LOG_FILE="$BATS_TMPDIR/flags_calls.log"
+  rm -f "$LOG_FILE"
+
+  setup_integration_mocks "$MOCK_BIN_DIR" "$LOG_FILE"
+  export PATH="$MOCK_BIN_DIR:$PATH"
 
   SUMFILE="flags_test.txt"
   {
     echo "$HASH_VALID  $DATA_FILE"
     echo "GARBAGE_LINE_NO_FORMAT"
     echo "$HASH_VALID  missing.txt"
-  } >"$SUMFILE"
+  } >>"$SUMFILE"
   CLEAN_SUMFILE="clean.txt"
 }
 
@@ -30,22 +31,20 @@ teardown() {
   rm -f "$DATA_FILE" "$SUMFILE" "$CLEAN_SUMFILE"
 }
 
-# --- 1. --ignore-missing ---
+# 1. --ignore-missing
 
 @test "Flags: --ignore-missing suppresses error for missing files" {
-  # CORRECCIÓN: Sin flag, archivos faltantes causan fallo de integridad (Exit 1), no error operacional (Exit 2)
   run "$CHECKIT_EXEC" -c "$SUMFILE"
   assert_failure "$EX_INTEGRITY_FAIL"
   assert_output --partial "[MISSING]"
 
-  # Con flag: Debe pasar (Exit 0)
   run "$CHECKIT_EXEC" -c "$SUMFILE" --ignore-missing
   assert_success
   refute_output --partial "[MISSING]"
   assert_output --partial "[OK] exists.txt"
 }
 
-# --- 2. --quiet ---
+# 2. --quiet
 
 @test "Flags: --quiet suppresses OK messages" {
   run "$CHECKIT_EXEC" -c "$SUMFILE" --quiet --ignore-missing
@@ -54,7 +53,7 @@ teardown() {
   refute_output --partial "[OK]"
 }
 
-# --- 3. --status ---
+# 3. --status
 
 @test "Flags: --status suppresses OK output but shows system errors" {
   echo "$HASH_VALID  $DATA_FILE" >"$CLEAN_SUMFILE"
@@ -72,7 +71,7 @@ teardown() {
   refute_output --partial "[OK]"
 }
 
-# --- 4. --warn ---
+# 4. --warn
 
 @test "Flags: --warn prints message to stderr on bad formatting" {
   run "$CHECKIT_EXEC" -c "$SUMFILE" --warn --ignore-missing
@@ -81,7 +80,7 @@ teardown() {
   assert_output --partial "WARNING: 1 line is improperly formatted"
 }
 
-# --- 5. --strict ---
+# 5. --strict
 
 @test "Flags: --strict exits non-zero on bad formatting" {
   run "$CHECKIT_EXEC" -c "$SUMFILE" --strict --ignore-missing

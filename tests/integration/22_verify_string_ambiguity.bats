@@ -5,21 +5,26 @@ load '../test_helper'
 setup() {
   source "$PROJECT_ROOT/lib/constants.sh"
 
+  TEST_FILE="debian.iso"
+  touch "$TEST_FILE"
+
+  HASH_40=$(printf 'a%.0s' {1..40})
+
   MOCK_BIN_DIR="$BATS_TMPDIR/checkit_mocks_ambiguity"
   mkdir -p "$MOCK_BIN_DIR"
-  export PATH="$MOCK_BIN_DIR:$PATH"
 
-  # --- MOCK SHA1SUM ---
+  # Mock sha1sum
   cat <<EOF >"$MOCK_BIN_DIR/sha1sum"
 #!/bin/bash
 exit 1
 EOF
   chmod +x "$MOCK_BIN_DIR/sha1sum"
 
-  # --- MOCK B2SUM ---
+  cp "$MOCK_BIN_DIR/sha1sum" "$MOCK_BIN_DIR/shasum"
+
+  # Mock blake2-160
   cat <<EOF >"$MOCK_BIN_DIR/b2sum"
 #!/bin/bash
-# Validamos que se llame con -l 160 si es blake2-160
 if [[ "\$*" == *"-l 160"* ]]; then
   exit 0
 fi
@@ -27,9 +32,7 @@ exit 1
 EOF
   chmod +x "$MOCK_BIN_DIR/b2sum"
 
-  TEST_FILE="debian.iso"
-  touch "$TEST_FILE"
-  HASH_40=$(printf 'a%.0s' {1..40})
+  export PATH="$MOCK_BIN_DIR:$PATH"
 }
 
 teardown() {

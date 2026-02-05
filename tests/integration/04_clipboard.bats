@@ -6,7 +6,7 @@ setup() {
   source "$PROJECT_ROOT/lib/constants.sh"
 
   TEST_FILE="clip_test.txt"
-  echo "copiame" >"$TEST_FILE"
+  echo ""copy me >"$TEST_FILE"
 
   # Directory for fake binaries
   MOCK_BIN_DIR="$BATS_TMPDIR/checkit_mocks"

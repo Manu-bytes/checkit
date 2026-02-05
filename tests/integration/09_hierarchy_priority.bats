@@ -13,19 +13,11 @@ setup() {
   HASH_SHA1=$(printf 'c%.0s' {1..40})
 
   MOCK_BIN_DIR="$BATS_TMPDIR/checkit_mocks_hierarchy"
-  mkdir -p "$MOCK_BIN_DIR"
-  export PATH="$MOCK_BIN_DIR:$PATH"
-
   LOG_FILE="$BATS_TMPDIR/calls.log"
   rm -f "$LOG_FILE"
 
-  echo "#!/bin/bash" >"$MOCK_BIN_DIR/sha256sum"
-  echo "echo 'sha256sum called' >> $LOG_FILE; exit 0" >>"$MOCK_BIN_DIR/sha256sum"
-  chmod +x "$MOCK_BIN_DIR/sha256sum"
-
-  echo "#!/bin/bash" >"$MOCK_BIN_DIR/sha1sum"
-  echo "echo 'sha1sum called' >> $LOG_FILE; exit 0" >>"$MOCK_BIN_DIR/sha1sum"
-  chmod +x "$MOCK_BIN_DIR/sha1sum"
+  setup_integration_mocks "$MOCK_BIN_DIR" "$LOG_FILE"
+  export PATH="$MOCK_BIN_DIR:$PATH"
 }
 
 teardown() {
@@ -38,14 +30,12 @@ teardown() {
   echo "$HASH_MD5  $DATA_FILE" >>"$sumfile"
 
   run "$CHECKIT_EXEC" -c "$sumfile"
-
   assert_success
 
   assert_output --partial "[OK] $DATA_FILE (sha256)"
-
   assert_output --partial "[SKIPPED]"
 
-  run grep "sha256sum called" "$LOG_FILE"
+  run grep "SHA256SUM_CALLED" "$LOG_FILE"
   assert_success
 }
 
@@ -62,14 +52,14 @@ teardown() {
   echo "$HASH_SHA256  $DATA_FILE" >>"$sumfile"
 
   run "$CHECKIT_EXEC" -c "$sumfile"
-
   assert_success
+
   assert_output --partial "[OK] $DATA_FILE (sha1)"
   assert_output --partial "[SKIPPED]"
 
-  run grep "sha1sum called" "$LOG_FILE"
+  run grep "SHA1SUM_CALLED" "$LOG_FILE"
   assert_success
-  run grep "sha256sum called" "$LOG_FILE"
+  run grep "SHA256SUM_CALLED" "$LOG_FILE"
   assert_failure
 }
 
@@ -79,8 +69,13 @@ teardown() {
   echo "$HASH_SHA1    $DATA_FILE" >>"$sumfile"
 
   run "$CHECKIT_EXEC" -c "$sumfile"
-
   assert_success
+
   assert_output --partial "[OK] $DATA_FILE (sha256)"
   assert_output --partial "[OK] $DATA_FILE (sha1)"
+
+  run grep "SHA1SUM_CALLED" "$LOG_FILE"
+  assert_success
+  run grep "SHA256SUM_CALLED" "$LOG_FILE"
+  assert_success
 }

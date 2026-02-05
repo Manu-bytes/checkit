@@ -5,25 +5,35 @@ load '../test_helper'
 setup() {
   source "$PROJECT_ROOT/lib/constants.sh"
 
+  TEST_FILE="data.txt"
+  touch "$TEST_FILE"
+
   MOCK_BIN_DIR="$BATS_TMPDIR/checkit_mocks_create"
   mkdir -p "$MOCK_BIN_DIR"
-  export PATH="$MOCK_BIN_DIR:$PATH"
 
   FULL_HASH="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-  echo -e "#!/bin/bash\necho \"$FULL_HASH  \$2\"" >"$MOCK_BIN_DIR/sha256sum"
-  echo -e "#!/bin/bash\necho \"$FULL_HASH  \$2\"" >"$MOCK_BIN_DIR/sha384sum"
-  chmod +x "$MOCK_BIN_DIR/sha256sum"
-  chmod +x "$MOCK_BIN_DIR/sha384sum"
+
+  # Hash generation
+  cat <<EOF >"$MOCK_BIN_DIR/hasher_mock"
+#!/bin/bash
+FILE="\${@: -1}"
+echo "$FULL_HASH  \$FILE"
+exit 0
+EOF
+  chmod +x "$MOCK_BIN_DIR/hasher_mock"
+
+  cp "$MOCK_BIN_DIR/hasher_mock" "$MOCK_BIN_DIR/sha256sum"
+  cp "$MOCK_BIN_DIR/hasher_mock" "$MOCK_BIN_DIR/sha384sum"
+  cp "$MOCK_BIN_DIR/hasher_mock" "$MOCK_BIN_DIR/shasum"
 
   # --- MOCK GPG ---
   cat <<EOF >"$MOCK_BIN_DIR/gpg"
 #!/bin/bash
 if [[ "\$1" == "--clearsign" ]]; then
-  # Consumimos stdin
   input=\$(cat)
-  
+
   echo "-----BEGIN PGP SIGNED MESSAGE-----"
-  echo "Hash: SHA512" # Siempre fijo en el mock, simulando default seguro
+  echo "Hash: SHA512"
   echo ""
   echo "\$input"
   echo "-----BEGIN PGP SIGNATURE-----"
@@ -33,8 +43,7 @@ exit 1
 EOF
   chmod +x "$MOCK_BIN_DIR/gpg"
 
-  TEST_FILE="data.txt"
-  touch "$TEST_FILE"
+  export PATH="$MOCK_BIN_DIR:$PATH"
 }
 
 teardown() {
@@ -62,7 +71,7 @@ teardown() {
 }
 
 @test "Create: --sign injects 'Content-Hash' header for GNU format" {
-  # Caso: GNU format (default) + sha384
+  # Case: GNU format (default) + sha384
   run "$CHECKIT_EXEC" "$TEST_FILE" --algo sha384 --sign
 
   assert_success
