@@ -5,8 +5,20 @@ load '../test_helper'
 setup() {
   source "$PROJECT_ROOT/lib/constants.sh"
 
+  DATA_FILE="image.iso"
+  touch "$DATA_FILE"
+  touch "${DATA_FILE}.sig"
+
+  VALID_HASH=$(printf 'a%.0s' {1..64})
+
+  SUMFILE="checksums.txt"
+  echo "$VALID_HASH  $DATA_FILE" >"$SUMFILE"
+
   MOCK_BIN_DIR="$BATS_TMPDIR/checkit_mocks_target_sig"
-  mkdir -p "$MOCK_BIN_DIR"
+  LOG_FILE="$BATS_TMPDIR/sig_test_calls.log"
+  rm -f "$LOG_FILE"
+
+  setup_integration_mocks "$MOCK_BIN_DIR" "$LOG_FILE"
   export PATH="$MOCK_BIN_DIR:$PATH"
 
   # --- MOCK GPG ---
@@ -14,7 +26,7 @@ setup() {
 #!/bin/bash
 ARGS="\$*"
 
-# Caso: Firma de la imagen ISO (Target File)
+# Case: ISO image signing (target file)
 if [[ "\$ARGS" == *"image.iso.sig"* ]]; then
   echo "gpg: Good signature from \"Arch Linux\"" >&2
   exit 0
@@ -24,24 +36,6 @@ fi
 exit 1
 EOF
   chmod +x "$MOCK_BIN_DIR/gpg"
-
-  # --- MOCK SHA256SUM ---
-  # Siempre devuelve éxito para que el foco sea la firma del target
-  echo "#!/bin/bash" >"$MOCK_BIN_DIR/sha256sum"
-  echo "exit 0" >>"$MOCK_BIN_DIR/sha256sum"
-  chmod +x "$MOCK_BIN_DIR/sha256sum"
-
-  # --- DATOS DE PRUEBA ---
-  DATA_FILE="image.iso"
-  touch "$DATA_FILE"
-  touch "${DATA_FILE}.sig" # La firma desconectada
-
-  # Un hash válido cualquiera (64 chars)
-  VALID_HASH=$(printf 'a%.0s' {1..64})
-
-  # Archivo de sumas SIN firma propia (solo contiene el hash)
-  SUMFILE="checksums.txt"
-  echo "$VALID_HASH  $DATA_FILE" >"$SUMFILE"
 }
 
 teardown() {
@@ -50,14 +44,9 @@ teardown() {
 }
 
 @test "Target Sig: Detects and verifies signature of the target file itself" {
-  # Ejecutamos checkit normal
   run "$CHECKIT_EXEC" -c "$SUMFILE"
-
   assert_success
 
-  # Verificamos que reporta OK del hash
   assert_output --partial "[OK] $DATA_FILE"
-
-  # Verificamos que reporta la firma detectada automáticamente
   assert_output --partial "[SIGNED]"
 }

@@ -5,25 +5,25 @@ load '../test_helper'
 setup() {
   source "$PROJECT_ROOT/lib/constants.sh"
 
-  MOCK_BIN_DIR="$BATS_TMPDIR/checkit_mocks_strict"
-  mkdir -p "$MOCK_BIN_DIR"
-  export PATH="$MOCK_BIN_DIR:$PATH"
+  DATA_FILE="data.iso"
+  touch "$DATA_FILE"
 
+  HASH_64=$(printf 'a%.0s' {1..64})
+
+  MOCK_BIN_DIR="$BATS_TMPDIR/checkit_mocks_strict"
+  LOG_FILE="$BATS_TMPDIR/strict_calls.log"
+  rm -f "$LOG_FILE"
+
+  setup_integration_mocks "$MOCK_BIN_DIR" "$LOG_FILE"
   cat <<EOF >"$MOCK_BIN_DIR/sha256sum"
 #!/bin/bash
+cat > /dev/null
+echo "SHA256SUM_CALLED" >> "$LOG_FILE"
 exit 1
 EOF
   chmod +x "$MOCK_BIN_DIR/sha256sum"
-
-  cat <<EOF >"$MOCK_BIN_DIR/b2sum"
-#!/bin/bash
-exit 0
-EOF
-  chmod +x "$MOCK_BIN_DIR/b2sum"
-
-  DATA_FILE="data.iso"
-  touch "$DATA_FILE"
-  HASH_64=$(printf 'a%.0s' {1..64})
+  cp "$MOCK_BIN_DIR/sha256sum" "$MOCK_BIN_DIR/shasum"
+  export PATH="$MOCK_BIN_DIR:$PATH"
 }
 
 teardown() {
@@ -39,6 +39,11 @@ teardown() {
 
   assert_success
   assert_output --partial "[OK] $DATA_FILE (blake2-256)"
+
+  run grep "SHA256SUM_CALLED" "$LOG_FILE"
+  assert_success
+  run grep "B2SUM_CALLED" "$LOG_FILE"
+  assert_success
 }
 
 @test "Integration: Explicit file (shasums.txt) FORBIDS fallback to Blake2" {
@@ -51,4 +56,9 @@ teardown() {
   assert_output --partial "[FAILED] $DATA_FILE (sha256)"
 
   refute_output --partial "blake2"
+
+  run grep "SHA256SUM_CALLED" "$LOG_FILE"
+  assert_success
+  run grep "B2SUM_CALLED" "$LOG_FILE"
+  assert_failure
 }

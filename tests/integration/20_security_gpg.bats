@@ -5,9 +5,16 @@ load '../test_helper'
 setup() {
   source "$PROJECT_ROOT/lib/constants.sh"
 
-  # Create mock bin directory
+  DATA_FILE="distro.iso"
+  touch "$DATA_FILE"
+
+  VALID_HASH=$(printf 'a%.0s' {1..64})
+
   MOCK_BIN_DIR="$BATS_TMPDIR/checkit_mocks_gpg"
-  mkdir -p "$MOCK_BIN_DIR"
+  LOG_FILE="$BATS_TMPDIR/gpg_test_calls.log"
+  rm -f "$LOG_FILE"
+
+  setup_integration_mocks "$MOCK_BIN_DIR" "$LOG_FILE"
   export PATH="$MOCK_BIN_DIR:$PATH"
 
   # --- GPG MOCK ---
@@ -49,20 +56,6 @@ fi
 exit 1
 EOF
   chmod +x "$MOCK_BIN_DIR/gpg"
-
-  # --- SHA256SUM MOCK ---
-  # Always returns success to isolate GPG logic testing
-  cat <<EOF >"$MOCK_BIN_DIR/sha256sum"
-#!/bin/bash
-exit 0
-EOF
-  chmod +x "$MOCK_BIN_DIR/sha256sum"
-
-  # --- TEST DATA CREATION ---
-  DATA_FILE="distro.iso"
-  touch "$DATA_FILE"
-
-  VALID_HASH=$(printf 'a%.0s' {1..64})
 
   # 1. Inline Signed File (Standard PGP header required for detection)
   {

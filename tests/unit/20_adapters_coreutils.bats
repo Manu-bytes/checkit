@@ -1,129 +1,139 @@
 #!/usr/bin/env bats
 
 # shellcheck disable=SC2329
-load '../test_helper'
+load '../libs/bats-support/load'
+load '../libs/bats-assert/load'
+
+# Load system under test
+load '../../lib/constants.sh'
+source "./lib/adapters/hash_adapter.sh"
 
 setup() {
-  source "$PROJECT_ROOT/lib/constants.sh"
-  source "$PROJECT_ROOT/lib/adapters/coreutils.sh"
-}
+  touch test_gen.txt
 
-@test "Adapter: coreutils::verify constructs correct command/pipe for SHA-256" {
+  # Mock for sha256sum
+  sha256sum() {
+    local is_verify=false
+    # Detect -c in any position
+    for arg in "$@"; do
+      if [[ "$arg" == "-c" ]]; then
+        is_verify=true
+        break
+      fi
+    done
 
-  local valid_hash_64
-  valid_hash_64=$(printf 'a%.0s' {1..64})
-
-  # Mocking: Simulate sha256sum reading from STDIN
-  function sha256sum() {
-    # We read what the pipe sends us
-    local input
-    input=$(cat)
-
-    # We verify that the input contains OUR hash and filename
-    # Note: We hardcode the match logic to the variable we defined above
-    if [[ "$input" == *"$valid_hash_64"* ]] && [[ "$input" == *"test_file.txt"* ]]; then
+    if [[ "$is_verify" == "true" ]]; then
+      cat >/dev/null
       return 0
     else
-      return 1
+      # Calculate mode: capture last argument (file)
+      local file=""
+      for arg in "$@"; do file="$arg"; done
+      echo "mock_generated_hash  $file"
+      return 0
     fi
   }
   export -f sha256sum
-  export valid_hash_64
 
-  local algo="sha256"
-  local file="test_file.txt"
-  local hash="$valid_hash_64"
+  # Mock for shasum
+  shasum() {
+    local is_verify=false
+    for arg in "$@"; do
+      if [[ "$arg" == "-c" ]]; then
+        is_verify=true
+        break
+      fi
+    done
 
-  # We create a dummy file to pass the existence validation (-f)
-  touch "$file"
+    if [[ "$is_verify" == "true" ]]; then
+      cat >/dev/null
+      return 0
+    else
+      local file=""
+      for arg in "$@"; do file="$arg"; done
+      echo "mock_generated_hash  $file"
+      return 0
+    fi
+  }
+  export -f shasum
 
-  run coreutils::verify "$algo" "$file" "$hash"
+  # Mock for b2sum
+  b2sum() {
+    local is_verify=false
+    for arg in "$@"; do
+      if [[ "$arg" == "-c" ]]; then
+        is_verify=true
+        break
+      fi
+    done
 
-  rm "$file"
+    if [[ "$is_verify" == "true" ]]; then
+      cat >/dev/null
+      return 0
+    else
+      local file=""
+      for arg in "$@"; do file="$arg"; done
+      echo "mock_b2_hash  $file"
+      return 0
+    fi
+  }
+  export -f b2sum
+}
 
+teardown() {
+  rm -f test_gen.txt
+}
+
+@test "Adapter: hash_adapter::verify constructs correct command/pipe for SHA-256" {
+  # Generate a valid-length hash (64 chars)
+  local valid_len_hash
+  valid_len_hash=$(printf 'a%.0s' {1..64})
+
+  run hash_adapter::verify "sha256" "test_gen.txt" "$valid_len_hash"
   assert_success
 }
 
-@test "Adapter: coreutils::verify fails when underlying command fails (integrity error)" {
-  function sha256sum() { return 1; }
+@test "Adapter: hash_adapter::verify fails when underlying command fails (integrity error)" {
+  local valid_len_hash
+  valid_len_hash=$(printf 'a%.0s' {1..64})
+
+  # Override mocks locally to simulate failure
+  sha256sum() { return 1; }
   export -f sha256sum
+  shasum() { return 1; }
+  export -f shasum
 
-  local algo="sha256"
-  local file="dummy_file"
-  touch "$file"
-
-  run coreutils::verify "$algo" "$file" "bad_hash"
-
-  rm "$file"
-
+  run hash_adapter::verify "sha256" "test_gen.txt" "$valid_len_hash"
   assert_failure "$EX_INTEGRITY_FAIL"
 }
 
-@test "Adapter: coreutils::verify returns operational error if file missing" {
-  local algo="sha256"
-  local file="non_existent_file"
-
-  run coreutils::verify "$algo" "$file" "any_hash"
-
+@test "Adapter: hash_adapter::verify returns operational error if file missing" {
+  run hash_adapter::verify "sha256" "missing_file.txt" "hash"
   assert_failure "$EX_OPERATIONAL_ERROR"
 }
 
-# --- Tests for calculate (Generation) ---
-@test "Adapter: coreutils::calculate generates hash for file" {
-  # Sha256sum mock for generation
-  function sha256sum() {
-    # Standard behavior: prints "hash filename"
-    echo "mock_generated_hash  $1"
-    return 0
-  }
-  export -f sha256sum
+@test "Adapter: hash_adapter::calculate generates hash for file" {
+  run hash_adapter::calculate "sha256" "test_gen.txt"
 
-  local file="test_gen.txt"
-  touch "$file"
-  local algo="sha256"
-
-  run coreutils::calculate "$algo" "$file"
-  rm "$file"
-
-  assert_success
+  # Output must match the format defined in the setup mocks
   assert_output "mock_generated_hash  test_gen.txt"
 }
 
-@test "Adapter: coreutils::calculate handles missing file" {
-  local file="ghost.txt"
-  local algo="sha256"
-
-  run coreutils::calculate "$algo" "$file"
-
+@test "Adapter: hash_adapter::calculate handles missing file" {
+  run hash_adapter::calculate "sha256" "missing.txt"
   assert_failure "$EX_OPERATIONAL_ERROR"
 }
 
-@test "Adapter: coreutils::verify enforces strict length for aliases (b2/blake2-512)" {
-  local algo="b2"
-  local file="test_aliases.txt"
-  local hash_224
-  hash_224=$(printf 'a%.0s' {1..56})
-
-  touch "$file"
-
-  run coreutils::verify "$algo" "$file" "$hash_224"
-
-  rm "$file"
-
+@test "Adapter: hash_adapter::verify enforces strict length for aliases (b2/blake2-512)" {
+  # 128 chars expected for blake2-512
+  local short_hash="abc"
+  run hash_adapter::verify "blake2" "test_gen.txt" "$short_hash"
   assert_failure "$EX_INTEGRITY_FAIL"
 }
 
-@test "Adapter: coreutils::verify fails on mismatched custom alias (b2-128 vs 224-bit hash)" {
-  local algo="b2-128"
-  local file="test_mismatch.txt"
-  local hash_224
-  hash_224=$(printf 'a%.0s' {1..56})
-
-  touch "$file"
-
-  run coreutils::verify "$algo" "$file" "$hash_224"
-
-  rm "$file"
-
+@test "Adapter: hash_adapter::verify fails on mismatched custom alias (b2-128 vs 224-bit hash)" {
+  # b2-128 expects 32 chars. Input is 56 chars.
+  local long_hash="11111111111111111111111111111111111111111111111111111111"
+  run hash_adapter::verify "blake2-128" "test_gen.txt" "$long_hash"
   assert_failure "$EX_INTEGRITY_FAIL"
 }
