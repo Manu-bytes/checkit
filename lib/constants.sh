@@ -21,3 +21,13 @@ readonly EX_OPERATIONAL_ERROR=2
 
 # Security Failure: Invalid or untrusted signature (.asc/.sig).
 readonly EX_SECURITY_FAIL=3
+
+# Version file
+readonly VERSION_FILE="$PROJECT_ROOT/VERSION"
+
+if [[ -f "$VERSION_FILE" ]]; then
+  CHECKIT_VERSION=$(cat "$VERSION_FILE")
+  readonly CHECKIT_VERSION
+else
+  readonly CHECKIT_VERSION="unknown"
+fi

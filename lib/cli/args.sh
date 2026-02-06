@@ -163,7 +163,7 @@ cli::parse_args() {
       exit "$EX_SUCCESS"
       ;;
     --version)
-      echo "checkit v0.9.0"
+      echo "version $CHECKIT_VERSION"
       exit "$EX_SUCCESS"
       ;;
     -*)
