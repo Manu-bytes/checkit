@@ -206,26 +206,39 @@ hash_adapter::check_list() {
 
   if [[ ! -f "$sumfile" ]]; then return "$EX_OPERATIONAL_ERROR"; fi
 
+  # --- COUNTERS INITIALIZATION ---
+  local cnt_ok=0
+  local cnt_failed=0    # Checksum mismatches
+  local cnt_missing=0   # File not found
+  local cnt_skipped=0   # Algorithm mismatches / Skips
+  local cnt_bad_lines=0 # Parsing errors
+  local cnt_signed=0    # Verified GPG signatures
+  local cnt_bad_sig=0   # Failed GPG signatures
+
+  # Internal callback for success
   __on_success() {
     local f_path="$1"
     local f_algo="$2"
     local extra_info=""
 
-    if [[ "$__CLI_QUIET" == "true" || "$__CLI_STATUS" == "true" ]]; then
-      return
-    fi
-
+    # Check GPG signature if available
     if type -t gpg::verify_target >/dev/null; then
       if gpg::verify_target "$f_path"; then
         extra_info=" + [SIGNED]"
+        cnt_signed=$((cnt_signed + 1))
       elif [[ $? -eq 3 ]]; then
         extra_info=" + [BAD SIG]"
+        cnt_bad_sig=$((cnt_bad_sig + 1))
       fi
     fi
 
+    if [[ "$__CLI_QUIET" == "true" || "$__CLI_STATUS" == "true" ]]; then
+      return
+    fi
     echo "[OK] $f_path ($f_algo)${extra_info}"
   }
 
+  # Internal callback for failure
   __on_failure() {
     local f_file="$1"
     local f_algo="$2"
@@ -255,18 +268,26 @@ hash_adapter::check_list() {
     fi
   fi
 
-  local failures=0
-  local verified_count=0
-  local bad_lines=0
-
   # shellcheck disable=SC2094
   while IFS= read -r line <&3 || [[ -n "$line" ]]; do
     local parsed
+
+    # Strict parsing (detects known algorithms)
     if ! parsed=$(core::parse_line "$line" "$sumfile"); then
-      if [[ "$line" != \#* && -n "$(echo "$line" | tr -d '[:space:]')" ]]; then
-        bad_lines=$((bad_lines + 1))
+      local clean_line
+      clean_line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+
+      # Regex: start with hex, spaces, optional '*', rest is filename
+      if [[ "$clean_line" =~ ^([a-fA-F0-9]+)[[:space:]]+[\*]?(.+)$ ]]; then
+        local raw_hash="${BASH_REMATCH[1]}"
+        local raw_file="${BASH_REMATCH[2]}"
+        parsed="unknown|$raw_hash|$raw_file"
+      else
+        if [[ "$line" != \#* && -n "$(echo "$line" | tr -d '[:space:]')" ]]; then
+          cnt_bad_lines=$((cnt_bad_lines + 1))
+        fi
+        continue
       fi
-      continue
     fi
 
     local parsed_algo
@@ -276,10 +297,11 @@ hash_adapter::check_list() {
     hash_line=$(echo "$parsed" | cut -d'|' -f2)
     file_line=$(echo "$parsed" | cut -d'|' -f3)
 
+    # --- MISSING FILE CHECK ---
     if [[ ! -f "$file_line" ]]; then
       if [[ "$__CLI_IGNORE_MISSING" == "true" ]]; then continue; fi
       echo "[MISSING] $file_line" >&2
-      failures=$((failures + 1))
+      cnt_missing=$((cnt_missing + 1))
       continue
     fi
 
@@ -297,12 +319,13 @@ hash_adapter::check_list() {
       target_algo="$parsed_algo"
       allow_fallback=false
 
-    # 3. Contexto Estricto
+    # 3. Strict Context
     elif [[ -n "$context_algo" ]]; then
       if [[ "$context_algo" == "sha_family" ]]; then
         target_algo=$(__get_sha_by_length "${#hash_line}")
         if [[ -z "$target_algo" ]]; then
           echo "[SKIPPED] $file_line (Not a SHA hash)"
+          cnt_skipped=$((cnt_skipped + 1))
           continue
         fi
         allow_fallback=false
@@ -320,13 +343,14 @@ hash_adapter::check_list() {
         ctx_len=$(hash_adapter::get_algo_length "$context_algo")
         if [[ "${#hash_line}" -ne "$ctx_len" ]]; then
           echo "[SKIPPED] $file_line (Format mismatch: expected $context_algo)"
+          cnt_skipped=$((cnt_skipped + 1))
           continue
         fi
         target_algo="$context_algo"
         allow_fallback=false
       fi
 
-    # 4. Modo Mixto / Neutral
+    # 4. Mixed / Neutral Mode
     else
       target_algo="$parsed_algo"
     fi
@@ -338,13 +362,13 @@ hash_adapter::check_list() {
     expected_len=$(hash_adapter::get_algo_length "$target_algo")
     if [[ "$expected_len" -gt 0 && "${#hash_line}" -ne "$expected_len" ]]; then
       echo "[FAILED] $file_line (Format mismatch)"
-      failures=$((failures + 1))
+      cnt_failed=$((cnt_failed + 1))
       continue
     fi
 
     if hash_adapter::verify "$target_algo" "$file_line" "$hash_line"; then
       __on_success "$file_line" "$target_algo"
-      verified_count=$((verified_count + 1))
+      cnt_ok=$((cnt_ok + 1))
     else
       local recovered=false
       if [[ "$allow_fallback" == "true" ]]; then
@@ -353,7 +377,7 @@ hash_adapter::check_list() {
         if [[ -n "$fallback" ]]; then
           if hash_adapter::verify "$fallback" "$file_line" "$hash_line"; then
             __on_success "$file_line" "$fallback"
-            verified_count=$((verified_count + 1))
+            cnt_ok=$((cnt_ok + 1))
             recovered=true
           fi
         fi
@@ -361,22 +385,77 @@ hash_adapter::check_list() {
 
       if [[ "$recovered" == "false" ]]; then
         __on_failure "$file_line" "$target_algo"
-        failures=$((failures + 1))
+        cnt_failed=$((cnt_failed + 1))
       fi
     fi
 
   done 3<"$sumfile"
 
-  if [[ "$bad_lines" -gt 0 ]]; then
-    if [[ "$__CLI_WARN" == "true" || "$__CLI_STRICT" == "true" ]]; then
-      echo "checkit: WARNING: $bad_lines line is improperly formatted" >&2
+  # --- FINAL SUMMARY REPORT ---
+  # Only print summary if --status is NOT active
+  if [[ "$__CLI_STATUS" != "true" ]]; then
+
+    # A. Report formatting warnings
+    if [[ "$cnt_bad_lines" -gt 0 ]]; then
+      local msg="lines are"
+      [[ "$cnt_bad_lines" -eq 1 ]] && msg="line is"
+      if [[ "$__CLI_WARN" == "true" || "$__CLI_STRICT" == "true" ]]; then
+        echo "checkit: WARNING: $cnt_bad_lines $msg improperly formatted" >&2
+      fi
+    fi
+
+    # B. Report skipped files (Context mismatch)
+    if [[ "$cnt_skipped" -gt 0 ]]; then
+      local msg="files were"
+      [[ "$cnt_skipped" -eq 1 ]] && msg="file was"
+      echo "checkit: WARNING: $cnt_skipped $msg skipped due to context mismatch" >&2
+    fi
+
+    # C. Report missing files
+    if [[ "$cnt_missing" -gt 0 && "$__CLI_IGNORE_MISSING" != "true" ]]; then
+      local msg="listed files"
+      [[ "$cnt_missing" -eq 1 ]] && msg="listed file"
+      echo "checkit: WARNING: $cnt_missing $msg could not be read" >&2
+    fi
+
+    # D. Report failed checksums
+    if [[ "$cnt_failed" -gt 0 ]]; then
+      local msg="computed checksums"
+      [[ "$cnt_failed" -eq 1 ]] && msg="computed checksum"
+      echo "checkit: WARNING: $cnt_failed $msg did NOT match" >&2
+    fi
+
+    # E. Report bad signatures (GPG)
+    if [[ "$cnt_bad_sig" -gt 0 ]]; then
+      local msg="signatures"
+      [[ "$cnt_bad_sig" -eq 1 ]] && msg="signature"
+      echo "checkit: WARNING: $cnt_bad_sig $msg failed verification" >&2
+    fi
+
+    # F. Report success stats (Optional but requested)
+    # Only if NOT quiet, to give positive feedback
+    if [[ "$__CLI_QUIET" != "true" && "$cnt_ok" -gt 0 ]]; then
+      # Build a summary string
+      local summary="checkit: Verified $cnt_ok files"
+      if [[ "$cnt_signed" -gt 0 ]]; then
+        summary="$summary ($cnt_signed signed)"
+      fi
+      echo "$summary." >&2
     fi
   fi
-  if [[ "$failures" -gt 0 ]]; then return "$EX_INTEGRITY_FAIL"; fi
-  if [[ "$bad_lines" -gt 0 && "$__CLI_STRICT" == "true" ]]; then return "$EX_INTEGRITY_FAIL"; fi
-  if [[ "$verified_count" -eq 0 ]]; then
-    if [[ "$__CLI_IGNORE_MISSING" == "true" ]]; then return "$EX_SUCCESS"; fi
-    return "$EX_OPERATIONAL_ERROR"
+
+  # --- EXIT CODE DETERMINATION ---
+  # Strict Mode: Any warning (bad format, skips) is fatal
+  if [[ "$__CLI_STRICT" == "true" ]]; then
+    if [[ "$cnt_bad_lines" -gt 0 || "$cnt_skipped" -gt 0 ]]; then
+      return "$EX_INTEGRITY_FAIL"
+    fi
   fi
+
+  # Standard Failures
+  if [[ "$cnt_missing" -gt 0 || "$cnt_failed" -gt 0 || "$cnt_bad_sig" -gt 0 ]]; then
+    return "$EX_INTEGRITY_FAIL"
+  fi
+
   return "$EX_SUCCESS"
 }
