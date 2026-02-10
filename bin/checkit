@@ -17,6 +17,8 @@ source "$PROJECT_ROOT/lib/core/algorithm_chooser.sh"
 source "$PROJECT_ROOT/lib/adapters/hash_adapter.sh"
 # shellcheck source=lib/adapters/gpg.sh
 source "$PROJECT_ROOT/lib/adapters/gpg.sh"
+# shellcheck source=lib/cli/ui.sh
+source "$PROJECT_ROOT/lib/cli/ui.sh"
 # shellcheck source=lib/cli/args.sh
 source "$PROJECT_ROOT/lib/cli/args.sh"
 # shellcheck source=lib/utils/clipboard.sh
@@ -37,7 +39,7 @@ do_verify_string() {
   else
     # Priority B: Heuristic identification
     if ! algo=$(core::identify_algorithm "$hash"); then
-      echo "Error: Could not identify hash algorithm (length: ${#hash})."
+      ui::log_error "Could not identify hash algorithm (length: ${#hash})."
       return "$EX_OPERATIONAL_ERROR"
     fi
   fi
@@ -45,7 +47,7 @@ do_verify_string() {
   # 2. Primary Verification Attempt
   # We use a subshell or capture exit code specifically to handle the fallback logic logic manually
   if hash_adapter::verify "$algo" "$file" "$hash"; then
-    echo "[OK] $file ($algo)"
+    ui::log_success "$file ($algo)"
     return "$EX_SUCCESS"
   fi
 
@@ -58,7 +60,7 @@ do_verify_string() {
     if [[ -n "$fallback_algo" ]]; then
       # Retry with fallback
       if hash_adapter::verify "$fallback_algo" "$file" "$hash"; then
-        echo "[OK] $file ($fallback_algo)"
+        ui::log_success "$file ($fallback_algo)"
         return "$EX_SUCCESS"
       fi
     fi
@@ -94,36 +96,36 @@ main() {
       if [[ "$gpg_status" -eq "$EX_SUCCESS" ]]; then
         # Happy Path
         if [[ "$__CLI_QUIET" == "false" ]]; then
-          echo "[INFO] Signature Verified: Good signature found."
+          ui::log_info "Signature Verified: Good signature found."
         fi
 
       elif [[ "$gpg_status" -eq "$EX_SECURITY_FAIL" ]]; then
         # BAD SIGNATURE DETECTED
         if [[ "$__CLI_STRICT_SECURITY" == "true" ]]; then
-          echo "[CRITICAL] BAD signature detected. Aborting strict mode." >&2
+          ui::log_critical "BAD signature detected. Aborting strict mode."
           echo "$gpg_out" >&2
           exit "$EX_SECURITY_FAIL"
         else
           # Auto Mode: Warn but proceed
-          echo "[WARNING] BAD signature detected. Integrity of list is compromised." >&2
+          ui::log_warning "BAD signature detected. Integrity of list is compromised."
         fi
 
       elif [[ "$gpg_status" -eq "$EX_OPERATIONAL_ERROR" ]]; then
         # MISSING KEY / GPG ERROR
         if [[ "$__CLI_STRICT_SECURITY" == "true" ]]; then
-          echo "[ERROR] Public key missing or GPG error. Cannot verify strict." >&2
+          ui::log_error "Public key missing or GPG error. Cannot verify strict."
           exit "$EX_SECURITY_FAIL"
         else
           # Auto Mode: Info only
           if [[ "$__CLI_QUIET" == "false" ]]; then
-            echo "[INFO] Signed file detected, but Public key missing. Proceeding with hash check."
+            ui::log_warning "Signed file detected, but Public key missing. Proceeding with hash check."
           fi
         fi
       fi
     else
       # No signature detected
       if [[ "$__CLI_STRICT_SECURITY" == "true" ]]; then
-        echo "Error: --verify-sign requested but no signature found in $sumfile"
+        ui::log_error "--verify-sign requested but no signature found in $sumfile"
         exit "$EX_OPERATIONAL_ERROR"
       fi
     fi
@@ -223,7 +225,7 @@ main() {
       echo "$output_buffer" >"$__CLI_OUTPUT_FILE"
 
       if [[ "$__CLI_QUIET" == "false" ]]; then
-        echo "   [Info] Checksums saved to: $__CLI_OUTPUT_FILE" >&2
+        ui::log_info "   Checksums saved to: $__CLI_OUTPUT_FILE" >&2
       fi
 
       # - Sign the File
@@ -231,10 +233,10 @@ main() {
         local ext=".sig"
         [[ "$__CLI_SIGN_ARMOR" == "true" ]] && ext=".asc"
         if [[ "$__CLI_QUIET" == "false" ]]; then
-          echo "   [Info] Signature created:  ${__CLI_OUTPUT_FILE}${ext}" >&2
+          ui::log_info "   Signature created:  ${__CLI_OUTPUT_FILE}${ext}" >&2
         fi
       else
-        echo "Error: GPG detached signing failed." >&2
+        ui::log_error "GPG detached signing failed."
         exit "$EX_OPERATIONAL_ERROR"
       fi
 
@@ -251,7 +253,7 @@ main() {
         if signed_content=$(gpg::sign_data "$output_buffer" "clear" "$__CLI_SIGN_ARMOR"); then
           output_buffer="$signed_content"
         else
-          echo "Error: GPG signing failed." >&2
+          ui::log_error "GPG signing failed."
           exit "$EX_OPERATIONAL_ERROR"
         fi
       fi
@@ -270,7 +272,7 @@ main() {
         fi
 
         if [[ "$__CLI_QUIET" == "false" ]]; then
-          echo "   [Info] Output saved to: $__CLI_OUTPUT_FILE" >&2
+          ui::log_info "   Output saved to: $__CLI_OUTPUT_FILE" >&2
         fi
       else
         # If no file provided, output to stdout
@@ -285,7 +287,7 @@ main() {
     # Clipboard Logic (Always try to copy whatever is in the buffer)
     if [[ "$__CLI_COPY" == "true" && -n "$output_buffer" ]]; then
       if utils::copy_to_clipboard "$output_buffer"; then
-        echo "   [Context] Copied hashes to clipboard." >&2
+        ui::log_clipboard "Copied hashes to clipboard."
       fi
     fi
     if [[ "$has_error" == "true" ]]; then exit "$EX_OPERATIONAL_ERROR"; fi

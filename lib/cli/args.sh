@@ -23,36 +23,7 @@ __CLI_SIGN_MODE=""          # Signature mode: "clear" for inline/cleartext or "d
 
 # cli::print_usage
 cli::print_usage() {
-  cat <<EOF
-Usage:
-  checkit [FILE] [HASH]             # Quick Verify
-  checkit [FILE] [OPTIONS]          # Calculate Hash (Create Mode)
-  checkit -c [SUMFILE] [OPTIONS]    # Check multiple hashes (Check Mode)
-
-General Options:
-  -a, --algo <alg>      Specify algorithm (md5, sha256, blake2b, etc). Default: sha256
-  -v, --verify-sign     Verify GPG signature if present (enforces strict mode)
-  -y, --copy            Copy output to clipboard
-  -h, --help            Show this help
-      --version         Show version
-
-Create Mode Options:
-      --all             Generate hashes using all safe algorithms
-  -s, --sign            Sign the output using GPG (default: clearsign)
-      --detach-sign     Create a detached signature (requires writing to file)
-  -f, --file <name>     Save checksums to file (default 'CHECKSUMS' if using --detach-sign)
-      --armor           Create ASCII armored output (.asc)
-  -o, --output <fmt>    Output format: text (gnu), bsd, json, xml
-      --tag             Force BSD style output (alias for --output bsd)
-  -z, --zero            End each output line with NUL, not newline
-
-Check Mode Options:
-      --ignore-missing  Don't fail or report status for missing files
-      --quiet           Don't print OK for each successfully verified file
-      --status          Don't output anything, status code shows success
-      --strict          Exit non-zero for improperly formatted checksum lines
-  -w, --warn            Warn about improperly formatted checksum lines
-EOF
+  ui::show_help
 }
 
 # cli::parse_args
@@ -73,7 +44,7 @@ cli::parse_args() {
   __CLI_WARN=false
 
   if [[ $# -eq 0 ]]; then
-    echo "Error: Missing arguments."
+    ui::log_warning "Missing arguments.\n"
     cli::print_usage
     return "$EX_OPERATIONAL_ERROR"
   fi
@@ -153,7 +124,7 @@ cli::parse_args() {
         [[ "$fmt" == "text" ]] && fmt="gnu"
         __CLI_OUTPUT_FMT="$fmt"
       else
-        echo "Error: Invalid output format '$fmt'. Use: text, gnu, bsd, json."
+        ui::log_error "Invalid output format '$fmt'. Use: text, gnu, bsd, json."
         return "$EX_OPERATIONAL_ERROR"
       fi
       shift 2
@@ -163,11 +134,11 @@ cli::parse_args() {
       exit "$EX_SUCCESS"
       ;;
     --version)
-      echo "version $CHECKIT_VERSION"
+      ui::show_version
       exit "$EX_SUCCESS"
       ;;
     -*)
-      echo "Error: Unknown option $1"
+      ui::log_error "Unknown option $1"
       return "$EX_OPERATIONAL_ERROR"
       ;;
     *)
@@ -181,7 +152,7 @@ cli::parse_args() {
   # Mode Inference Logic
   if [[ "$__CLI_MODE" == "check" ]]; then
     if [[ ${#__CLI_FILES[@]} -eq 0 ]]; then
-      echo "Error: Missing sumfile argument for check mode."
+      ui::log_error "Missing sumfile argument for check mode."
       return "$EX_OPERATIONAL_ERROR"
     fi
     return "$EX_SUCCESS"
@@ -198,7 +169,7 @@ cli::parse_args() {
     __CLI_HASH="${__CLI_FILES[1]}"
     ;;
   *)
-    echo "Error: Ambiguous arguments. Use -c for check mode."
+    ui::log_error "Ambiguous arguments. Use -c for check mode."
     return "$EX_OPERATIONAL_ERROR"
     ;;
   esac
