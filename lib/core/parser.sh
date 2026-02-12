@@ -1,74 +1,98 @@
 #!/usr/bin/env bash
+#
+# lib/core/parser.sh
+# Core Parser: Checksum line parsing logic.
+#
+# Responsibility: Deconstruct raw text lines into structured components
+# (Algorithm, Hash, Filename) using various strategy patterns (BSD, GNU, Reversed).
 
-# core::parse_line
-# Parses a raw line to extract filename, hash, and algorithm.
+# ----------------------------------------------------------------------
+# Public Functions
+# ----------------------------------------------------------------------
+
+# Public: Parses a raw text line to extract the checksum components.
+# Attempts multiple parsing strategies (BSD tag, Standard, Reversed).
 #
-# Arguments:
-#   $1 - Raw text line
-#   $2 - (Optional) Sumfile path (used as hint for collision resolution)
+# $1 - line         - The raw text line to parse.
+# $2 - sumfile_hint - (Optional) Path to the source file to aid algorithm detection
+#                     (resolves collisions like SHA-512 vs Blake2b).
 #
-# Returns:
-#   Output: "ALGO|HASH|FILENAME"
+# Returns 0 on success (echoes "ALGO|HASH|FILENAME"), or non-zero on failure.
 core::parse_line() {
   local line="$1"
   local sumfile_hint="${2:-}"
 
-  # 1. Basic cleanup
-  line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+  # 1. Basic Cleanup (Bash Native)
+  # Trim leading whitespace
+  line="${line#"${line%%[![:space:]]*}"}"
+  # Trim trailing whitespace
+  line="${line%"${line##*[![:space:]]}"}"
 
-  if [[ -z "$line" || "$line" == \#* || "$line" == -* ]]; then
+  # Ignore empty lines or comments
+  if [[ -z "$line" || "$line" == \#* ]]; then
     return 1
   fi
 
-  # --- STRATEGY BSD: Explicit Format (ALGO (file) = hash) ---
-  # Regex: Start with word, space, (, anything, ), space, =, space, hash
+  # --- STRATEGY 1: BSD Explicit Format ---
+  # Pattern: ALGO (file) = hash
+  # Regex capture: 1=Algo, 2=Filename, 3=Hash
   if [[ "$line" =~ ^([A-Za-z0-9-]+)[[:space:]]*\((.+)\)[[:space:]]*=[[:space:]]*([a-fA-F0-9]+)$ ]]; then
     local algo_tag="${BASH_REMATCH[1]}"
     local filename="${BASH_REMATCH[2]}"
     local hash="${BASH_REMATCH[3]}"
 
-    # Normalize algo name (BLAKE2b -> blake2)
-    local algo_lower
-    algo_lower=$(echo "$algo_tag" | tr '[:upper:]' '[:lower:]')
+    # Normalize algo name (Bash 4.0+ case conversion)
+    local algo_lower="${algo_tag,,}"
+
+    # Handle specific BSD aliases
     if [[ "$algo_lower" == "blake2b" ]]; then algo_lower="blake2"; fi
 
     echo "$algo_lower|$hash|$filename"
     return 0
   fi
 
-  # --- STRATEGY A: Standard Format (HASH  FILENAME) ---
-  local first_token
-  first_token=$(echo "$line" | awk '{print $1}')
-  local clean_first
-  clean_first=$(echo "$first_token" | sed 's/^[\(<]//;s/[\)>]$//')
+  # --- STRATEGY 2: Standard Format (HASH  FILENAME) ---
+  # Extract first word (Hash candidate)
+  local first_token="${line%%[[:space:]]*}"
 
-  # Pass sumfile_hint to identify_algorithm to resolve collisions (SHA512 vs BLAKE2)
+  # Clean potential wrappers like parenthesis (rare edge cases)
+  local clean_first="${first_token//[()<>]/}"
+
   if output=$(core::identify_algorithm "$clean_first" "$sumfile_hint"); then
     local detected_algo="$output"
     local detected_hash="$clean_first"
-    local filename
-    # shellcheck disable=SC2001
-    filename=$(echo "$line" | sed "s/^${first_token}[[:space:]]*//")
-    filename="${filename#\*}" # Remove binary marker
+
+    # Extract filename: Remove hash and leading spaces
+    local filename="${line#"$first_token"}"
+    filename="${filename#"${filename%%[![:space:]]*}"}" # Trim leading space
+
+    # Remove binary marker '*' if present at start of filename
+    if [[ "$filename" == \** ]]; then
+      filename="${filename:1}"
+    fi
 
     echo "$detected_algo|$detected_hash|$filename"
     return 0
   fi
 
-  # --- STRATEGY B: Reversed Format (FILENAME HASH) ---
-  local last_token
-  last_token=$(echo "$line" | awk '{print $NF}')
-  local clean_last
-  clean_last=$(echo "$last_token" | sed 's/^[\(<]//;s/[\)>]$//')
+  # --- STRATEGY 3: Reversed Format (FILENAME HASH) ---
+  # Extract last word (Hash candidate)
+  local last_token="${line##*[[:space:]]}"
+
+  local clean_last="${last_token//[()<>]/}"
 
   if output=$(core::identify_algorithm "$clean_last" "$sumfile_hint"); then
     local detected_algo="$output"
     local detected_hash="$clean_last"
-    local filename
-    # Remove the last token from the end of the line
-    # shellcheck disable=SC2001
-    filename=$(echo "$line" | sed "s/[[:space:]]*$last_token$//")
-    filename="${filename#\*}"
+
+    # Extract filename: Remove hash from end
+    local filename="${line%"$last_token"}"
+    filename="${filename%"${filename##*[![:space:]]}"}" # Trim trailing space
+
+    # Remove binary marker '*' if present (logic implies it would be at start)
+    if [[ "$filename" == \** ]]; then
+      filename="${filename:1}"
+    fi
 
     echo "$detected_algo|$detected_hash|$filename"
     return 0

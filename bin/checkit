@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+#
+# bin/checkit
+# Main Entry Point: Orchestrates the application flow.
+#
+# Responsibility: Bootstraps the environment, parses arguments,
+# and dispatches execution to specific domain logic (Check, Create, Verify).
 
 # Resolves project root to locate libraries relative to this script.
 BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
@@ -24,9 +30,13 @@ source "$PROJECT_ROOT/lib/cli/args.sh"
 # shellcheck source=lib/utils/clipboard.sh
 source "$PROJECT_ROOT/lib/utils/clipboard.sh"
 
-# do_verify_string
-# Verification logic for direct file and hash arguments.
-# Handles case: checkit <file> <hash>
+# Internal: Executes verification for a single file/hash pair.
+# Handles the flow for 'checkit <file> <hash>'.
+#
+# $1 - file - The file path to verify.
+# $2 - hash - The expected hash string.
+#
+# Returns 0 on success, non-zero on failure.
 do_verify_string() {
   local file="$1"
   local hash="$2"
@@ -37,18 +47,19 @@ do_verify_string() {
     algo="$__CLI_ALGO"
   else
     if ! algo=$(core::identify_algorithm "$hash"); then
-      ui::log_error "$(ui::get_msg 'err_algo_id') (${#hash})"
+      ui::log_error "$(ui::fmt_msg 'err_algo_id' "${#hash}")"
       return "$EX_OPERATIONAL_ERROR"
     fi
   fi
 
-  # 2. Primary Verification Attempt
+  # 2. Execute Primary Verification
   if hash_adapter::verify "$algo" "$file" "$hash"; then
     ui::log_file_status "$ST_OK" "$file" "$algo"
     return "$EX_SUCCESS"
   fi
 
-  # 3. Ambiguity Resolution (Fallback)
+  # 3. Resolve Ambiguity (Fallback Strategy)
+  # If the user did not enforce an algorithm, try the fallback (e.g., sha256 -> blake2).
   if [[ "$__CLI_ALGO_SET" == "false" ]]; then
     local fallback_algo
     fallback_algo=$(hash_adapter::get_fallback_algo "$algo")
@@ -61,18 +72,24 @@ do_verify_string() {
     fi
   fi
 
-  # 4. Final Failure Report
+  # 4. Report Failure
   ui::log_file_status "$ST_FAIL" "$file" "$algo"
   return "$EX_INTEGRITY_FAIL"
 }
 
+# Internal: Main execution block.
+# Parses arguments and switches between execution modes.
+#
+# $@ - Command line arguments.
+#
+# Returns the exit code of the operation.
 main() {
-  # 1. Argument Parsing
+  # 1. Parse CLI arguments and initialize global state
   if ! cli::parse_args "$@"; then
     exit "$EX_OPERATIONAL_ERROR"
   fi
 
-  # 2. Mode Dispatcher
+  # 2. Dispatch Execution Mode
   case "$__CLI_MODE" in
   "verify_string")
     do_verify_string "$__CLI_FILE" "$__CLI_HASH"
@@ -82,48 +99,46 @@ main() {
   "check")
     local sumfile="${__CLI_FILES[0]}"
 
-    # --- SECURITY: GPG VERIFICATION BLOCK ---
+    # --- SECURITY: GPG Verification ---
     if gpg::detect_signature "$sumfile"; then
       gpg_out=$(gpg::verify "$sumfile")
       gpg_status=$?
 
       if [[ "$gpg_status" -eq "$EX_SUCCESS" ]]; then
-        # Happy Path
+        # Signature Valid
         if [[ "$__CLI_QUIET" == "false" ]]; then
           ui::log_info "$(ui::get_msg 'msg_sig_good')"
         fi
 
       elif [[ "$gpg_status" -eq "$EX_SECURITY_FAIL" ]]; then
-        # BAD SIGNATURE DETECTED
+        # Signature Invalid
         if [[ "$__CLI_STRICT_SECURITY" == "true" ]]; then
           ui::log_critical "$(ui::get_msg 'err_sig_bad_strict')"
           echo "$gpg_out" >&2
           exit "$EX_SECURITY_FAIL"
         else
-          # Auto Mode: Warn but proceed
           ui::log_warning "$(ui::get_msg 'warn_sig_bad')"
         fi
 
       elif [[ "$gpg_status" -eq "$EX_OPERATIONAL_ERROR" ]]; then
-        # MISSING KEY / GPG ERROR
+        # Missing Key / Error
         if [[ "$__CLI_STRICT_SECURITY" == "true" ]]; then
           ui::log_error "$(ui::get_msg 'err_sig_missing_strict')"
           exit "$EX_SECURITY_FAIL"
         else
-          # Auto Mode: Info only
           if [[ "$__CLI_QUIET" == "false" ]]; then
             ui::log_warning "$(ui::get_msg 'warn_sig_missing')"
           fi
         fi
       fi
     else
-      # No signature detected
+      # No Signature Found
       if [[ "$__CLI_STRICT_SECURITY" == "true" ]]; then
         ui::log_error "$(ui::fmt_msg 'err_sig_not_found' "$sumfile")"
         exit "$EX_OPERATIONAL_ERROR"
       fi
     fi
-    # --- END SECURITY BLOCK ---
+    # --- End Security Block ---
 
     local algo_strategy="auto"
     if [[ "$__CLI_ALGO_SET" == "true" ]]; then
@@ -134,7 +149,7 @@ main() {
     ;;
 
   "create")
-    # 1. Determine Algorithms
+    # 1. Determine Target Algorithms
     local algos_to_run=()
     if [[ "$__CLI_ALL_ALGOS" == "true" ]]; then
       algos_to_run=("md5" "sha1" "sha256" "sha512" "blake2b")
@@ -146,14 +161,14 @@ main() {
     local has_error=false
     local first_item=true
 
-    # 2. Header for Structured Formats
+    # 2. Initialize Output Buffer (Structured Formats)
     if [[ "$__CLI_OUTPUT_FMT" == "json" ]]; then
       output_buffer+="["
     elif [[ "$__CLI_OUTPUT_FMT" == "xml" ]]; then
       output_buffer+="<checksums>"
     fi
 
-    # 3. Main Loop
+    # 3. Calculate Hashes
     for file in "${__CLI_FILES[@]}"; do
       # Fail fast validation
       if [[ ! -f "$file" ]]; then
@@ -167,7 +182,7 @@ main() {
           local hash
           hash=$(echo "$raw_line" | awk '{print $1}')
 
-          # Handle Separators (JSON logic)
+          # Handle Separators (JSON/XML logic)
           if [[ "$__CLI_OUTPUT_FMT" == "json" ]]; then
             if [[ "$first_item" == "true" ]]; then
               output_buffer+=$'\n'
@@ -186,25 +201,26 @@ main() {
           formatted=$(core::format_hash "$__CLI_OUTPUT_FMT" "$algo" "$file" "$hash")
           output_buffer+="$formatted"
         else
-          ui::log_info "$(ui::fmt_msg 'msg_saved' "$__CLI_OUTPUT_FILE")"
+          # Error Handling
+          ui::log_error "$(ui::fmt_msg 'err_calc_fail' "$algo" "$file")"
           has_error=true
         fi
       done
     done
 
-    # 4. Footer for Structured Formats
+    # 4. Finalize Output Buffer
     if [[ "$__CLI_OUTPUT_FMT" == "json" ]]; then
       output_buffer+=$'\n]'
     elif [[ "$__CLI_OUTPUT_FMT" == "xml" ]]; then
       output_buffer+=$'\n</checksums>'
     fi
 
-    # 5. Logic: Write to File and Signature
+    # 5. Output Management (Write/Sign)
     if [[ "$__CLI_SIGN_MODE" == "detach" && -z "$__CLI_OUTPUT_FILE" ]]; then
       __CLI_OUTPUT_FILE="CHECKSUMS"
     fi
 
-    # Case: Detached Signature
+    # Case A: Detached Signature
     if [[ "$__CLI_SIGN_MODE" == "detach" ]]; then
       mkdir -p "$(dirname "$__CLI_OUTPUT_FILE")"
       echo "$output_buffer" >"$__CLI_OUTPUT_FILE"
@@ -224,9 +240,9 @@ main() {
         exit "$EX_OPERATIONAL_ERROR"
       fi
 
-    # Case: Inline Signature / No Sign
+    # Case B: Inline Signature / Plain Output
     else
-      # A. Sign buffer if requested (--sign)
+      # Sign buffer if requested (--sign)
       if [[ "$__CLI_SIGN_MODE" == "clear" ]]; then
         if [[ "$__CLI_OUTPUT_FMT" == "gnu" && "$__CLI_ALL_ALGOS" == "false" ]]; then
           output_buffer="Content-Hash: ${__CLI_ALGO}"$'\n\n'"$output_buffer"
@@ -240,7 +256,7 @@ main() {
         fi
       fi
 
-      # B. Final output (file or stdout)
+      # Write final output (file or stdout)
       if [[ -n "$__CLI_OUTPUT_FILE" ]]; then
         mkdir -p "$(dirname "$__CLI_OUTPUT_FILE")"
 
@@ -262,7 +278,7 @@ main() {
       fi
     fi
 
-    # Clipboard Logic
+    # 6. Clipboard Integration
     if [[ "$__CLI_COPY" == "true" && -n "$output_buffer" ]]; then
       if utils::copy_to_clipboard "$output_buffer"; then
         ui::log_clipboard "$(ui::get_msg 'msg_copy_ok')"
@@ -271,6 +287,7 @@ main() {
     if [[ "$has_error" == "true" ]]; then exit "$EX_OPERATIONAL_ERROR"; fi
     exit "$EX_SUCCESS"
     ;;
+
   *)
     exit "$EX_SUCCESS"
     ;;

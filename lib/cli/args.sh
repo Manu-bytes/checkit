@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
+#
+# lib/cli/args.sh
+# CLI Argument Parser: Parses command line arguments and flags.
+#
+# Responsibility: Populates global configuration variables (__CLI_*) based on
+# user input and infers the execution mode.
 
-# Global variables for CLI state
+# ----------------------------------------------------------------------
+# Global Variables (CLI State)
+# ----------------------------------------------------------------------
+
 __CLI_MODE=""               # check, create, verify_string
 __CLI_ALGO="sha256"         # Default algorithm
 __CLI_ALGO_SET=false        # Set algorithm
@@ -19,16 +28,28 @@ __CLI_SIGN=false            # Flag --sign
 __CLI_ZERO=false            # Flag --zero
 __CLI_OUTPUT_FMT="gnu"      # Default output format (gnu, bsd, json, xml)
 __CLI_OUTPUT_FILE=""        # File to store hashes (-f)
-__CLI_SIGN_MODE=""          # Signature mode: "clear" for inline/cleartext or "detach" for detached file
+__CLI_SIGN_MODE=""          # Signature mode: "clear" for inline or "detach"
+__CLI_SIGN_ARMOR=false      # Flag --armor
 
-# cli::print_usage
+# ----------------------------------------------------------------------
+# Public Functions
+# ----------------------------------------------------------------------
+
+# Public: Delegates help display to the UI adapter.
+#
+# Returns nothing.
 cli::print_usage() {
   ui::show_help
 }
 
-# cli::parse_args
+# Public: Parses raw command line arguments and populates global state.
+# Handles flag processing and infers the operation mode based on input.
+#
+# $@ - The command line arguments passed to the script.
+#
+# Returns 0 on success, or EX_OPERATIONAL_ERROR (2) on parsing failure.
 cli::parse_args() {
-  # Reset globals
+  # Reset globals to ensures clean state
   __CLI_MODE=""
   __CLI_ALGO="sha256"
   __CLI_ALGO_SET=false
@@ -44,7 +65,7 @@ cli::parse_args() {
   __CLI_WARN=false
 
   if [[ $# -eq 0 ]]; then
-    ui::log_warning "Missing arguments.\n"
+    ui::log_warning "$(ui::get_msg 'warn_arg_missing')"
     cli::print_usage
     return "$EX_OPERATIONAL_ERROR"
   fi
@@ -124,7 +145,7 @@ cli::parse_args() {
         [[ "$fmt" == "text" ]] && fmt="gnu"
         __CLI_OUTPUT_FMT="$fmt"
       else
-        ui::log_error "Invalid output format '$fmt'. Use: text, gnu, bsd, json."
+        ui::log_error "$(ui::fmt_msg 'err_arg_fmt_invalid' "$fmt")"
         return "$EX_OPERATIONAL_ERROR"
       fi
       shift 2
@@ -138,7 +159,7 @@ cli::parse_args() {
       exit "$EX_SUCCESS"
       ;;
     -*)
-      ui::log_error "Unknown option $1"
+      ui::log_error "$(ui::fmt_msg 'err_arg_opt_unknown' "$1")"
       return "$EX_OPERATIONAL_ERROR"
       ;;
     *)
@@ -152,7 +173,7 @@ cli::parse_args() {
   # Mode Inference Logic
   if [[ "$__CLI_MODE" == "check" ]]; then
     if [[ ${#__CLI_FILES[@]} -eq 0 ]]; then
-      ui::log_error "Missing sumfile argument for check mode."
+      ui::log_error "$(ui::get_msg 'err_check_no_file')"
       return "$EX_OPERATIONAL_ERROR"
     fi
     return "$EX_SUCCESS"
@@ -169,7 +190,7 @@ cli::parse_args() {
     __CLI_HASH="${__CLI_FILES[1]}"
     ;;
   *)
-    ui::log_error "Ambiguous arguments. Use -c for check mode."
+    ui::log_error "$(ui::get_msg 'err_ambiguous_mode')"
     return "$EX_OPERATIONAL_ERROR"
     ;;
   esac

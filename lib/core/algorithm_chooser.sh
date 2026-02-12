@@ -1,41 +1,45 @@
 #!/usr/bin/env bash
+#
+# lib/core/algorithm_chooser.sh
+# Algorithm Detection Core: Identifies hash algorithms.
+#
+# Responsibility: Deduce the cryptographic algorithm based on hash string length
+# or specific file headers/tags within checksum files.
 
-# core::identify_algorithm
-#
-# Determines the hash algorithm based on string length and optional hints
-# to resolve collisions.
-#
-# Arguments:
-#   $1 - Hash string (hexadecimal)
-#   $2 - (Optional) Filename hint for disambiguation
-#
-# Returns:
-#   Output: Algorithm name (md5, sha1, sha256, sha512, blake2, etc.)
-#   Exit Code: EX_SUCCESS if identified, EX_OPERATIONAL_ERROR if fails.
+# ----------------------------------------------------------------------
+# Public Functions
+# ----------------------------------------------------------------------
 
+# Public: Determines the hash algorithm based on string length.
+# Uses an optional filename hint to resolve collisions (e.g., SHA-512 vs Blake2b).
+#
+# $1 - input_hash    - The hexadecimal hash string to analyze.
+# $2 - filename_hint - (Optional) A filename string to aid disambiguation.
+#
+# Returns the algorithm name to stdout, or exits with EX_OPERATIONAL_ERROR if invalid.
 core::identify_algorithm() {
   local input_hash="${1:-}"
   local filename_hint="${2:-}"
 
-  # Remove whitespace
+  # 1. Normalize Input
+  # Remove all whitespace to ensure accurate length calculation.
   input_hash="${input_hash//[[:space:]]/}"
 
-  # STRICT VALIDATION: Ensure input is strictly hexadecimal.
-  # This prevents filenames with similar lengths (e.g., 32 chars)
-  # from being misidentified as hashes by the parser.
+  # 2. Strict Validation
+  # Ensure input contains only hexadecimal characters.
   if [[ ! "$input_hash" =~ ^[a-fA-F0-9]+$ ]]; then
     return "$EX_OPERATIONAL_ERROR"
   fi
 
   local length="${#input_hash}"
 
-  # Convert hint to lowercase for matching
-  local hint_lower
-  hint_lower=$(echo "$filename_hint" | tr '[:upper:]' '[:lower:]')
+  # 3. Normalize Hint
+  # Convert to lowercase using Bash 4.0+ operator for performance.
+  local hint_lower="${filename_hint,,}"
 
   case "$length" in
   32)
-    # 32 chars = 128 bits (MD5 or BLAKE2-128)
+    # 128 bits: MD5 or BLAKE2-128
     if [[ "$hint_lower" == *"b2"* ]] || [[ "$hint_lower" == *"blake"* ]]; then
       echo "blake2-128"
     else
@@ -44,7 +48,7 @@ core::identify_algorithm() {
     return "$EX_SUCCESS"
     ;;
   40)
-    # 40 chars = 160 bits (SHA-1 or BLAKE2-160)
+    # 160 bits: SHA-1 or BLAKE2-160
     if [[ "$hint_lower" == *"b2"* ]] || [[ "$hint_lower" == *"blake"* ]]; then
       echo "blake2-160"
     else
@@ -53,7 +57,7 @@ core::identify_algorithm() {
     return "$EX_SUCCESS"
     ;;
   56)
-    # 56 chars = 224 bits (SHA-224 or BLAKE2-224)
+    # 224 bits: SHA-224 or BLAKE2-224
     if [[ "$hint_lower" == *"b2"* ]] || [[ "$hint_lower" == *"blake"* ]]; then
       echo "blake2-224"
     else
@@ -62,7 +66,7 @@ core::identify_algorithm() {
     return "$EX_SUCCESS"
     ;;
   64)
-    # 64 chars = 256 bits (SHA-256 or BLAKE2-256)
+    # 256 bits: SHA-256 or BLAKE2-256
     if [[ "$hint_lower" == *"b2"* ]] || [[ "$hint_lower" == *"blake"* ]]; then
       echo "blake2-256"
     else
@@ -71,7 +75,7 @@ core::identify_algorithm() {
     return "$EX_SUCCESS"
     ;;
   96)
-    # 96 chars = 384 bits (SHA-384 or BLAKE2-384)
+    # 384 bits: SHA-384 or BLAKE2-384
     if [[ "$hint_lower" == *"b2"* ]] || [[ "$hint_lower" == *"blake"* ]]; then
       echo "blake2-384"
     else
@@ -80,8 +84,7 @@ core::identify_algorithm() {
     return "$EX_SUCCESS"
     ;;
   128)
-    # 128 chars = 512 bits (SHA-512 or BLAKE2b)
-    # Resolve collision using file extension/name hint
+    # 512 bits: SHA-512 or BLAKE2b
     if [[ "$hint_lower" == *"b2"* ]] || [[ "$hint_lower" == *"blake"* ]]; then
       echo "blake2"
     else
@@ -95,17 +98,13 @@ core::identify_algorithm() {
   esac
 }
 
-# core::identify_from_file
-# Scans the first lines of the file looking for algorithm clues.
-# Supports GPG headers, BSD tags, and GNU standard format.
+# Public: Scans a file header to identify the algorithm used.
+# Supports 'Content-Hash' headers and BSD-style tags.
+# Reads a limited number of lines to prevent performance issues on large files.
 #
-# Arguments:
-#   $1 - Path to the checksums file
+# $1 - file - The path to the checksums file.
 #
-# Returns:
-#   Output: Name of the algorithm (e.g., sha256)
-#   Exit Code: EX_SUCCESS or error.
-
+# Returns the algorithm name to stdout on success.
 core::identify_from_file() {
   local file="$1"
 
@@ -113,7 +112,6 @@ core::identify_from_file() {
     return "$EX_OPERATIONAL_ERROR"
   fi
 
-  # Read up to 21 lines searching for a valid match.
   local max_lines=21
   local count=0
 
@@ -123,22 +121,22 @@ core::identify_from_file() {
       break
     fi
 
-    # Basic cleanup
-    line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    # 1. Trim whitespace (Bash Native)
+    # Removes leading and trailing spaces without spawning subshells (sed).
+    line="${line#"${line%%[![:space:]]*}"}"
+    line="${line%"${line##*[![:space:]]}"}"
 
     if [[ -z "$line" ]]; then continue; fi
 
-    # --- 1: CONTENT-HASH HEADER DETECTION ---
+    # --- Strategy A: Content-Hash Header ---
     # Matches: "Content-Hash: SHA256", "Content-Hash: blake2b"
-    # STRICTLY ignores standard GPG "Hash:" header to avoid signature confusion.
     if [[ "$line" =~ ^Content-Hash:[[:space:]]*([A-Za-z0-9-]+) ]]; then
       local raw_algo="${BASH_REMATCH[1]}"
 
-      # 1. Normalize to lowercase
-      local algo
-      algo=$(echo "$raw_algo" | tr '[:upper:]' '[:lower:]')
+      # Normalize to lowercase (Bash Native)
+      local algo="${raw_algo,,}"
 
-      # 2. Normalize aliases
+      # Normalize aliases
       # Handle "b2-" prefix -> "blake2-"
       if [[ "$algo" == "b2"* ]]; then
         algo="${algo/b2/blake2}"
@@ -153,20 +151,20 @@ core::identify_from_file() {
       return "$EX_SUCCESS"
     fi
 
-    # --- 2: BSD TAG DETECTION ---
-    # Example: "SHA256 (file) = hash" or "BLAKE2b (file) = hash"
-    local line_upper
-    line_upper=$(echo "$line" | tr '[:lower:]' '[:upper:]')
+    # --- Strategy B: BSD Tag Detection ---
+    # Matches: "SHA256 (file) = hash"
+    # Use uppercase for regex matching
+    local line_upper="${line^^}"
 
-    # Regex allows optional 'B' or 'S' suffix for BLAKE2 (e.g., BLAKE2B)
     if [[ "$line_upper" =~ ^(SHA256|SHA512|SHA1|MD5|BLAKE2[BS]?)[[:space:]]*\( ]]; then
       local algo_raw="${BASH_REMATCH[1]}"
 
-      # Normalize BLAKE2B to blake2 for adapter compatibility
+      # Normalize BLAKE2B/BLAKE2S
       if [[ "$algo_raw" == "BLAKE2B" ]]; then
         echo "blake2"
       else
-        echo "$algo_raw" | awk '{print tolower($1)}'
+        # Convert to lowercase (Bash Native)
+        echo "${algo_raw,,}"
       fi
       return "$EX_SUCCESS"
     fi

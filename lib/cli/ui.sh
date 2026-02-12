@@ -1,17 +1,29 @@
 #!/usr/bin/env bash
-
+#
+# lib/cli/ui.sh
 # UI Adapter: Handles User Output, Colors, Icons, and Help Menu
 # Responsibility: Translate Internal Status Keys into human-readable, localized output.
+# localized output. Decouples core logic from presentation.
+#
 
+# ----------------------------------------------------------------------
 # 1. Language Detection
-# ---------------------
+# ----------------------------------------------------------------------
 UI_LANG="en"
 if [[ "${LANG:-}" == *"es_"* || "${LC_ALL:-}" == *"es_"* ]]; then
   UI_LANG="es"
 fi
 
+# ----------------------------------------------------------------------
 # 2. Message Dictionary (Portable Function)
-# -----------------------------------------
+# ----------------------------------------------------------------------
+
+# Public: Retrieves a localized message string based on a key.
+# Implements a dictionary pattern using case statements for POSIX compatibility.
+#
+# $1 - key - The string identifier for the message (e.g., "lbl_ok").
+#
+# Returns the localized string to stdout.
 ui::get_msg() {
   local key="$1"
 
@@ -41,6 +53,7 @@ ui::get_msg() {
     rpt_files) echo "archivos" ;;
     rpt_signed) echo "firmados" ;;
 
+    # --- Errors & Messages ---
     err_algo_id) echo "No se pudo identificar el algoritmo (longitud: %s)." ;;
     msg_sig_good) echo "Firma Verificada: Se encontró una firma válida." ;;
     err_sig_bad_strict) echo "Firma INVÁLIDA detectada. Abortando modo estricto." ;;
@@ -54,8 +67,13 @@ ui::get_msg() {
     err_sig_detach_fail) echo "Fallo al crear firma separada GPG." ;;
     err_sig_fail) echo "Fallo al firmar con GPG." ;;
     msg_copy_ok) echo "Hashes copiados al portapapeles." ;;
+    warn_arg_missing) echo "Faltan argumentos." ;;
+    err_arg_fmt_invalid) echo "Formato de salida inválido '%s'. Use: text, gnu, bsd, json." ;;
+    err_arg_opt_unknown) echo "Opción desconocida %s" ;;
+    err_check_no_file) echo "Falta el argumento sumfile para el modo check." ;;
+    err_ambiguous_mode) echo "Argumentos ambiguos. Use -c para modo check." ;;
 
-    # --- Standard Help (Existing) ---
+    # --- Standard Help ---
     desc) echo "Herramienta avanzada de integridad y verificación de hashes." ;;
     usage_title) echo "Uso" ;;
     usage_1) echo "  checkit [ARCHIVO] [HASH]         # Verificación Rápida" ;;
@@ -119,6 +137,7 @@ ui::get_msg() {
     rpt_files) echo "files" ;;
     rpt_signed) echo "signed" ;;
 
+    # --- Errors & Messages ---
     err_algo_id) echo "Could not identify hash algorithm (length: %s)." ;;
     msg_sig_good) echo "Signature Verified: Good signature found." ;;
     err_sig_bad_strict) echo "BAD signature detected. Aborting strict mode." ;;
@@ -132,8 +151,13 @@ ui::get_msg() {
     err_sig_detach_fail) echo "GPG detached signing failed." ;;
     err_sig_fail) echo "GPG signing failed." ;;
     msg_copy_ok) echo "Copied hashes to clipboard." ;;
+    warn_arg_missing) echo "Missing arguments." ;;
+    err_arg_fmt_invalid) echo "Invalid output format '%s'. Use: text, gnu, bsd, json." ;;
+    err_arg_opt_unknown) echo "Unknown option %s" ;;
+    err_check_no_file) echo "Missing sumfile argument for check mode." ;;
+    err_ambiguous_mode) echo "Ambiguous arguments. Use -c for check mode." ;;
 
-    # --- Standard Help (Existing) ---
+    # --- Standard Help ---
     desc) echo "Advanced file integrity and hash verification tool." ;;
     usage_title) echo "Usage" ;;
     usage_1) echo "  checkit [FILE] [HASH]             # Quick Verify" ;;
@@ -173,12 +197,17 @@ ui::get_msg() {
   fi
 }
 
+# ----------------------------------------------------------------------
 # 3. Public Functions
-# -------------------
+# ----------------------------------------------------------------------
 
-# ui::fmt_msg <key> [args...]
-# Helper to format translated messages safely, suppressing SC2059
-# because the format string comes from our internal trusted dictionary.
+# Public: Formats translated messages safely suppressing SC2059.
+# Wraps printf to handle dynamic format strings from the trusted dictionary.
+#
+# $1      - key  - The message key to retrieve.
+# $...    - args - Variable arguments to format into the string.
+#
+# Returns nothing (prints to stderr).
 ui::fmt_msg() {
   local key="$1"
   shift
@@ -189,13 +218,15 @@ ui::fmt_msg() {
   printf "$format_str" "$@" >&2
 }
 
-# ui::log_file_status
-# Receives Internal Status Keys (ST_*) and renders them.
-# Args:
-#   $1 - status_key: ST_OK, ST_FAIL, etc.
-#   $2 - file: filename
-#   $3 - info: (optional) algorithm or technical reason
-#   $4 - extra_status: (optional) ST_SIGNED, ST_BAD_SIG
+# Public: Renders the status of a processed file to stderr.
+# Interprets the internal status key to select the correct color and icon.
+#
+# $1 - status_key   - The internal constant string (e.g., $ST_OK, $ST_FAIL).
+# $2 - file         - The filename string to display.
+# $3 - info         - (Optional) Algorithm used or technical reason string.
+# $4 - extra_status - (Optional) Secondary status key (e.g., $ST_SIGNED).
+#
+# Returns nothing.
 ui::log_file_status() {
   local status_key="$1"
   local file="$2"
@@ -260,8 +291,18 @@ ui::log_file_status() {
   esac
 }
 
-# ui::log_report_summary
-# Calculates the final summary block using translated strings.
+# Public: Calculates and prints the final summary block using translated strings.
+# Aggregates counters for OK, FAILED, MISSING, etc.
+#
+# $1 - cnt_ok        - Count of verified files.
+# $2 - cnt_failed    - Count of checksum mismatches.
+# $3 - cnt_missing   - Count of missing files.
+# $4 - cnt_skipped   - Count of skipped files.
+# $5 - cnt_bad_sig   - Count of bad GPG signatures.
+# $6 - cnt_signed    - Count of good GPG signatures.
+# $7 - cnt_bad_lines - Count of malformed lines.
+#
+# Returns nothing.
 ui::log_report_summary() {
   local cnt_ok="$1"
   local cnt_failed="$2"
@@ -274,8 +315,7 @@ ui::log_report_summary() {
   local prefix
   prefix=$(ui::get_msg "rpt_prefix")
 
-  # Helper to print lines
-  # Args: count, color, symbol, msg_singular, msg_plural
+  # Internal: Helper to print summary lines if count > 0.
   _print_sum() {
     local cnt="$1"
     local clr="$2"
@@ -331,34 +371,45 @@ ui::log_report_summary() {
   fi
 }
 
-# ui::log_info <message>
+# Public: Logs an info message to stderr.
+#
+# $1 - message - The string to log.
 ui::log_info() {
   if [[ "${__CLI_QUIET:-false}" == "false" ]]; then
     echo -e "${C_CYAN}${SYMBOL_INFO}$1${C_R}" >&2
   fi
 }
 
-# ui::log_warning <message>
+# Public: Logs a warning message to stderr.
+#
+# $1 - message - The string to log.
 ui::log_warning() {
   echo -e "${C_ORANGE}${SYMBOL_WARNING}$1${C_R}" >&2
 }
 
-# ui::log_critical <message>
+# Public: Logs a critical error message to stderr.
+#
+# $1 - message - The string to log.
 ui::log_critical() {
   echo -e "${C_RED}${SYMBOL_CRITICAL}$1${C_R}" >&2
 }
 
-# ui::log_error <message>
+# Public: Logs a standard error message to stderr.
+#
+# $1 - message - The string to log.
 ui::log_error() {
   echo -e "${C_RED}${SYMBOL_ERROR}$1${C_R}" >&2
 }
 
-# ui::log_clipboard <message>
+# Public: Logs a clipboard action message.
+#
+# $1 - message - The string to log.
 ui::log_clipboard() {
   echo -e "${C_CYANG}   ${SYMBOL_CLIPB}$1${C_R}" >&2
 }
 
-# ui::show_version
+# Public: Displays the version information and license.
+# Uses localized strings.
 ui::show_version() {
   echo -e "${C_BOLD}${APP_NAME}${C_R} ${C_CYAN}v${CHECKIT_VERSION}${C_R}"
   printf "Copyright (C) %s %s.\n" "$APP_YEAR" "$APP_AUTHOR"
@@ -369,7 +420,8 @@ ui::show_version() {
   ui::fmt_msg "$(ui::get_msg "written_by")\n" "$APP_AUTHOR"
 }
 
-# ui::show_help
+# Public: Displays the help menu with all available options.
+# Uses localized strings for section headers and descriptions.
 ui::show_help() {
   echo -e "${C_BOLD}${APP_NAME}${C_R} v${CHECKIT_VERSION}"
   ui::get_msg "desc"
