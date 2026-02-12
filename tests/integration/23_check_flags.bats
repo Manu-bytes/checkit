@@ -77,7 +77,7 @@ teardown() {
   run "$CHECKIT_EXEC" -c "$SUMFILE" --warn --ignore-missing
 
   assert_success
-  assert_output --partial "checkit: WARNING: 1 line is improperly formatted"
+  assert_output --partial "checkit:  WARNING: 1 line is improperly formatted"
 }
 
 # 5. --strict

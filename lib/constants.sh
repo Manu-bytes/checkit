@@ -42,8 +42,23 @@ readonly APP_YEAR
 readonly APP_LICENSE="GPLv3+"
 readonly APP_WEBSITE="https://github.com/Manu-bytes/checkit"
 
+# ----------------------------------------------------------------------
+# Internal Status Keys (The Protocol)
+# ----------------------------------------------------------------------
+# Contract between Logic (Core/Adapters) and Presentation (UI).
+# UI.sh will use these keys to look up the correct symbol/text/color.
+
+readonly ST_OK="status_ok"             # Verification passed
+readonly ST_FAIL="status_fail"         # Hash mismatch or verify failed
+readonly ST_MISSING="status_missing"   # File not found
+readonly ST_SKIP="status_skip"         # Algorithm/Format mismatch
+readonly ST_SIGNED="status_signed"     # GPG Signature Verified
+readonly ST_BAD_SIG="status_bad_sig"   # GPG Signature Invalid
+readonly ST_BAD_LINE="status_bad_line" # Malformed line in sumfile (optional use)
+
+# ----------------------------------------------------------------------
 # Configuration & Colors
-# -------------------------
+# ----------------------------------------------------------------------
 # Use colors only when output is an interactive terminal (not a pipe)
 if [[ -t 1 ]]; then
   readonly C_R="\033[0m"              # Reset
@@ -77,8 +92,9 @@ else
   readonly C_MSG2=""
 fi
 
+# ----------------------------------------------------------------------
 # Configuration Symbols
-# ---------------------------
+# ----------------------------------------------------------------------
 
 # Path & Defaults
 # ---------------------------
@@ -88,7 +104,6 @@ readonly CONFIG_FILE="$CONFIG_DIR/checkit.conf"
 # Default mode if nothing is found
 MODE="ascii"
 
-# ---------------------------
 # Load Configuration
 # ---------------------------
 if [[ -f "$CONFIG_FILE" ]]; then
@@ -96,7 +111,7 @@ if [[ -f "$CONFIG_FILE" ]]; then
   source "$CONFIG_FILE"
 fi
 
-# 2. Normalize MODE to lowercase
+# Normalize MODE to lowercase
 # We use the modern syntax with a fallback for older Bash versions
 if [[ "${BASH_VERSINFO[0]}" -ge 4 ]]; then
   MODE="${MODE,,}"

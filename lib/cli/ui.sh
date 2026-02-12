@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 
 # UI Adapter: Handles User Output, Colors, Icons, and Help Menu
-# Responsibility: Present information to the user in the correct language.
+# Responsibility: Translate Internal Status Keys into human-readable, localized output.
 
 # 1. Language Detection
 # ---------------------
-# Detect whether system locale is Spanish
 UI_LANG="en"
 if [[ "${LANG:-}" == *"es_"* || "${LC_ALL:-}" == *"es_"* ]]; then
   UI_LANG="es"
@@ -13,12 +12,50 @@ fi
 
 # 2. Message Dictionary (Portable Function)
 # -----------------------------------------
-# Use a case statement instead of associative arrays for maximum POSIX compatibility
 ui::get_msg() {
   local key="$1"
 
   if [[ "$UI_LANG" == "es" ]]; then
     case "$key" in
+    # --- Status Labels ---
+    lbl_ok) echo "OK" ;;
+    lbl_fail) echo "FALLO" ;;
+    lbl_miss) echo "AUSENTE" ;;
+    lbl_skip) echo "OMITIDO" ;;
+    lbl_signed) echo "FIRMADO" ;;
+    lbl_badsig) echo "FIRMA INVÁLIDA" ;;
+
+    # --- Report Summary ---
+    rpt_prefix) echo " checkit: " ;;
+    rpt_bad_fmt_sg) echo "línea tiene formato incorrecto" ;;
+    rpt_bad_fmt_pl) echo "líneas tienen formato incorrecto" ;;
+    rpt_skip_sg) echo "archivo omitido por contexto" ;;
+    rpt_skip_pl) echo "archivos omitidos por contexto" ;;
+    rpt_miss_sg) echo "archivo listado no se pudo leer" ;;
+    rpt_miss_pl) echo "archivos listados no se pudieron leer" ;;
+    rpt_fail_sg) echo "checksum calculado NO coincidió" ;;
+    rpt_fail_pl) echo "checksums calculados NO coincidieron" ;;
+    rpt_badsig_sg) echo "firma falló verificación" ;;
+    rpt_badsig_pl) echo "firmas fallaron verificación" ;;
+    rpt_verify) echo "Verificados" ;;
+    rpt_files) echo "archivos" ;;
+    rpt_signed) echo "firmados" ;;
+
+    err_algo_id) echo "No se pudo identificar el algoritmo (longitud: %s)." ;;
+    msg_sig_good) echo "Firma Verificada: Se encontró una firma válida." ;;
+    err_sig_bad_strict) echo "Firma INVÁLIDA detectada. Abortando modo estricto." ;;
+    warn_sig_bad) echo "Firma INVÁLIDA detectada. La integridad de la lista está comprometida." ;;
+    err_sig_missing_strict) echo "Falta clave pública o error GPG. No se puede verificar en estricto." ;;
+    warn_sig_missing) echo "Archivo firmado, pero falta clave pública. Procediendo con verificación de hashes." ;;
+    err_sig_not_found) echo "--verify-sign solicitado pero no se halló firma en %s" ;;
+    err_calc_fail) echo "Error: Fallo al calcular %s para %s" ;;
+    msg_saved) echo "    Salida guardada en: %s" ;;
+    msg_sig_created) echo "    Firma creada:  %s" ;;
+    err_sig_detach_fail) echo "Fallo al crear firma separada GPG." ;;
+    err_sig_fail) echo "Fallo al firmar con GPG." ;;
+    msg_copy_ok) echo "Hashes copiados al portapapeles." ;;
+
+    # --- Standard Help (Existing) ---
     desc) echo "Herramienta avanzada de integridad y verificación de hashes." ;;
     usage_title) echo "Uso" ;;
     usage_1) echo "  checkit [ARCHIVO] [HASH]         # Verificación Rápida" ;;
@@ -58,11 +95,50 @@ ui::get_msg() {
   else
     # Default: English
     case "$key" in
+    # --- Status Labels ---
+    lbl_ok) echo "OK" ;;
+    lbl_fail) echo "FAILED" ;;
+    lbl_miss) echo "MISSING" ;;
+    lbl_skip) echo "SKIPPED" ;;
+    lbl_signed) echo "SIGNED" ;;
+    lbl_badsig) echo "BAD SIG" ;;
+
+    # --- Report Summary ---
+    rpt_prefix) echo " checkit: " ;;
+    rpt_bad_fmt_sg) echo "line is improperly formatted" ;;
+    rpt_bad_fmt_pl) echo "lines are improperly formatted" ;;
+    rpt_skip_sg) echo "file was skipped due to context mismatch" ;;
+    rpt_skip_pl) echo "files were skipped due to context mismatch" ;;
+    rpt_miss_sg) echo "listed file could not be read" ;;
+    rpt_miss_pl) echo "listed files could not be read" ;;
+    rpt_fail_sg) echo "computed checksum did NOT match" ;;
+    rpt_fail_pl) echo "computed checksums did NOT match" ;;
+    rpt_badsig_sg) echo "signature failed verification" ;;
+    rpt_badsig_pl) echo "signatures failed verification" ;;
+    rpt_verify) echo "Verified" ;;
+    rpt_files) echo "files" ;;
+    rpt_signed) echo "signed" ;;
+
+    err_algo_id) echo "Could not identify hash algorithm (length: %s)." ;;
+    msg_sig_good) echo "Signature Verified: Good signature found." ;;
+    err_sig_bad_strict) echo "BAD signature detected. Aborting strict mode." ;;
+    warn_sig_bad) echo "BAD signature detected. Integrity of list is compromised." ;;
+    err_sig_missing_strict) echo "Public key missing or GPG error. Cannot verify strict." ;;
+    warn_sig_missing) echo "Signed file detected, but Public key missing. Proceeding with hash check." ;;
+    err_sig_not_found) echo "--verify-sign requested but no signature found in %s" ;;
+    err_calc_fail) echo "Error: Failed to calculate %s for %s" ;;
+    msg_saved) echo "    Output saved to: %s" ;;
+    msg_sig_created) echo "    Signature created:  %s" ;;
+    err_sig_detach_fail) echo "GPG detached signing failed." ;;
+    err_sig_fail) echo "GPG signing failed." ;;
+    msg_copy_ok) echo "Copied hashes to clipboard." ;;
+
+    # --- Standard Help (Existing) ---
     desc) echo "Advanced file integrity and hash verification tool." ;;
     usage_title) echo "Usage" ;;
-    usage_1) echo "  checkit [FILE] [HASH]            # Quick Verify" ;;
-    usage_2) echo "  checkit [FILE] [OPTIONS]         # Calculate Hash (Create Mode)" ;;
-    usage_3) echo "  checkit -c [SUMFILE] [OPTIONS]   # Check multiple hashes (Check Mode)" ;;
+    usage_1) echo "  checkit [FILE] [HASH]             # Quick Verify" ;;
+    usage_2) echo "  checkit [FILE] [OPTIONS]          # Calculate Hash (Create Mode)" ;;
+    usage_3) echo "  checkit -c [SUMFILE] [OPTIONS]    # Check multiple hashes (Check Mode)" ;;
 
     sect_general) echo "General Options" ;;
     opt_algo) echo "  -a, --algo <alg>     Specify algorithm (md5, sha256, blake2b, etc). Default: sha256" ;;
@@ -99,55 +175,160 @@ ui::get_msg() {
 
 # 3. Public Functions
 # -------------------
+
+# ui::fmt_msg <key> [args...]
+# Helper to format translated messages safely, suppressing SC2059
+# because the format string comes from our internal trusted dictionary.
+ui::fmt_msg() {
+  local key="$1"
+  shift
+  local format_str
+  format_str=$(ui::get_msg "$key")
+
+  # shellcheck disable=SC2059
+  printf "$format_str" "$@" >&2
+}
+
 # ui::log_file_status
-# Centralized printing of processed file status lines
+# Receives Internal Status Keys (ST_*) and renders them.
 # Args:
-#   $1 - status: "OK", "FAILED", "MISSING", "SKIPPED", "BAD_LINES"
+#   $1 - status_key: ST_OK, ST_FAIL, etc.
 #   $2 - file: filename
-#   $3 - algo: (optional) algorithm used
-#   $4 - extra: (optional) additional info (e.g., "SIGNED", "BAD_SIG")
+#   $3 - info: (optional) algorithm or technical reason
+#   $4 - extra_status: (optional) ST_SIGNED, ST_BAD_SIG
 ui::log_file_status() {
-  local status="$1"
+  local status_key="$1"
   local file="$2"
-  local algo="${3:-}"
-  local extra="${4:-}"
+  local info="${3:-}"
+  local extra_status="${4:-}"
 
-  case "$status" in
-  "OK")
-    # Return immediately if in STATUS mode
+  # Local variables for display
+  local symbol color label extra_text=""
+
+  case "$status_key" in
+  "$ST_OK")
     if [[ "${__CLI_STATUS:-false}" == "true" ]]; then return; fi
-    # Do not print OK when in quiet mode
     if [[ "${__CLI_QUIET:-false}" == "true" ]]; then return; fi
+    symbol="$SYMBOL_CHECK"
+    color="$C_GREEN"
+    label=$(ui::get_msg "lbl_ok")
 
-    local extra_text=""
-    if [[ "$extra" == "SIGNED" ]]; then
-      extra_text=" ${C_GREENH}${SYMBOL_SIGNED:-[SIGNED]}${C_R}"
-    elif [[ "$extra" == "BAD_SIG" ]]; then
-      extra_text=" ${C_REDH}${SYMBOL_BAD:-[BAD SIG]}${C_R}"
+    # Handle GPG sub-status
+    if [[ "$extra_status" == "$ST_SIGNED" ]]; then
+      local sig_lbl
+      sig_lbl=$(ui::get_msg "lbl_signed")
+      extra_text=" ${C_GREENH}${SYMBOL_SIGNED:-[$sig_lbl]}${C_R}"
+    elif [[ "$extra_status" == "$ST_BAD_SIG" ]]; then
+      local sig_lbl
+      sig_lbl=$(ui::get_msg "lbl_badsig")
+      extra_text=" ${C_REDH}${SYMBOL_BAD:-[$sig_lbl]}${C_R}"
     fi
 
-    echo -e "${C_GREEN}${SYMBOL_CHECK:-[OK]} $file${C_R} ($algo)${extra_text}" >&2
+    echo -e "${color}${symbol:-[$label]} $file${C_R} ($info)${extra_text}" >&2
     ;;
 
-  "FAILED")
-    # Return immediately if in STATUS mode
+  "$ST_FAIL")
     if [[ "${__CLI_STATUS:-false}" == "true" ]]; then return; fi
-    echo -e "${C_RED}${SYMBOL_FAILED:-[FAILED]} $file${C_R} ($algo)" >&2
+    symbol="$SYMBOL_FAILED"
+    color="$C_RED"
+    label=$(ui::get_msg "lbl_fail")
+    # Info here usually contains the algo or reason
+    echo -e "${color}${symbol:-[$label]} $file${C_R} ($info)" >&2
     ;;
 
-  "MISSING")
-    if [[ "${__CLI_IGNORE_MISSING:-false}" == "false" ]]; then
-      echo -e "${C_MSG1}${SYMBOL_MISSING:-[MISSING]} $file${C_R}" >&2
-    fi
+  "$ST_MISSING")
+    if [[ "${__CLI_IGNORE_MISSING:-false}" == "true" ]]; then return; fi
+    symbol="$SYMBOL_MISSING"
+    color="$C_MSG1"
+    label=$(ui::get_msg "lbl_miss")
+    echo -e "${color}${symbol:-[$label]} $file${C_R}" >&2
     ;;
 
-  "SKIPPED")
-    # Return immediately if in STATUS mode
+  "$ST_SKIP")
     if [[ "${__CLI_STATUS:-false}" == "true" ]]; then return; fi
-    local reason="$algo"
-    echo -e "${C_LORANGE}${SYMBOL_SKIPPED:-[SKIPPED]} $file${C_R}${C_MSG2} ($reason)${C_R}" >&2
+    symbol="$SYMBOL_SKIPPED"
+    color="$C_LORANGE"
+    label=$(ui::get_msg "lbl_skip")
+    # Info contains the reason (e.g. "Not a SHA hash")
+    echo -e "${color}${symbol:-[$label]} $file${C_R}${C_MSG2} ($info)${C_R}" >&2
+    ;;
+
+  *)
+    # Fallback for unknown states
+    echo -e "${C_MSG1}[UNKNOWN] $file${C_R}" >&2
     ;;
   esac
+}
+
+# ui::log_report_summary
+# Calculates the final summary block using translated strings.
+ui::log_report_summary() {
+  local cnt_ok="$1"
+  local cnt_failed="$2"
+  local cnt_missing="$3"
+  local cnt_skipped="$4"
+  local cnt_bad_sig="$5"
+  local cnt_signed="$6"
+  local cnt_bad_lines="$7"
+
+  local prefix
+  prefix=$(ui::get_msg "rpt_prefix")
+
+  # Helper to print lines
+  # Args: count, color, symbol, msg_singular, msg_plural
+  _print_sum() {
+    local cnt="$1"
+    local clr="$2"
+    local sym="$3"
+    local k_sg="$4"
+    local k_pl="$5"
+
+    if [[ "$cnt" -gt 0 ]]; then
+      local msg
+      if [[ "$cnt" -eq 1 ]]; then
+        msg=$(ui::get_msg "$k_sg")
+      else
+        msg=$(ui::get_msg "$k_pl")
+      fi
+      echo -e "${prefix}${clr}${sym}${C_R} $cnt ${C_MSG2}$msg${C_R}" >&2
+    fi
+  }
+
+  # 1. BAD LINES
+  if [[ "$__CLI_WARN" == "true" || "$__CLI_STRICT" == "true" ]]; then
+    _print_sum "$cnt_bad_lines" "$C_ORANGE" "$SYMBOL_REPORT" "rpt_bad_fmt_sg" "rpt_bad_fmt_pl"
+  fi
+
+  # 2. SKIPPED
+  _print_sum "$cnt_skipped" "$C_ORANGE" "$SYMBOL_REPORT" "rpt_skip_sg" "rpt_skip_pl"
+
+  # 3. MISSING
+  if [[ "$__CLI_IGNORE_MISSING" != "true" ]]; then
+    _print_sum "$cnt_missing" "$C_ORANGE" "$SYMBOL_REPORT" "rpt_miss_sg" "rpt_miss_pl"
+  fi
+
+  # 4. FAILED
+  _print_sum "$cnt_failed" "$C_ORANGE" "$SYMBOL_REPORT" "rpt_fail_sg" "rpt_fail_pl"
+
+  # 5. BAD SIGNATURES
+  _print_sum "$cnt_bad_sig" "$C_ORANGE" "$SYMBOL_REPORT" "rpt_badsig_sg" "rpt_badsig_pl"
+
+  # 6. VERIFIED (SUCCESS)
+  if [[ "$__CLI_QUIET" != "true" && "$cnt_ok" -gt 0 ]]; then
+    local v_txt
+    local f_txt
+    v_txt=$(ui::get_msg "rpt_verify")
+    f_txt=$(ui::get_msg "rpt_files")
+
+    local summary="${prefix}${C_ORANGE}${SYMBOL_REPORT}${C_R} $cnt_ok ${C_MSG2}${v_txt}${C_R} ${C_MSG2}${f_txt}${C_R}"
+
+    if [[ "$cnt_signed" -gt 0 ]]; then
+      local s_txt
+      s_txt=$(ui::get_msg "rpt_signed")
+      summary="$summary (${C_GREEN}${s_txt}${C_R})"
+    fi
+    echo -e "$summary." >&2
+  fi
 }
 
 # ui::log_info <message>
@@ -172,102 +353,34 @@ ui::log_error() {
   echo -e "${C_RED}${SYMBOL_ERROR}$1${C_R}" >&2
 }
 
-# ui::log_report_summary <message>
-ui::log_report_summary() {
-  local cnt_ok="$1"
-  local cnt_failed="$2"
-  local cnt_missing="$3"
-  local cnt_skipped="$4"
-  local cnt_bad_sig="$5"
-  local cnt_signed="$6"
-  local cnt_bad_lines="$7"
-
-  # 1. Report formatting warnings (BAD LINES)
-  if [[ "$cnt_bad_lines" -gt 0 ]]; then
-    if [[ "$__CLI_WARN" == "true" || "$__CLI_STRICT" == "true" ]]; then
-      local msg="lines are improperly formatted"
-      [[ "$cnt_bad_lines" -eq 1 ]] && msg="line is improperly formatted"
-      echo -e " checkit:${C_ORANGE}${SYMBOL_REPORT}${C_R} $cnt_bad_lines ${C_MSG2}$msg${C_R}" >&2
-    fi
-  fi
-
-  # 2. Report SKIPPED
-  if [[ "$cnt_skipped" -gt 0 ]]; then
-    local msg="files were skipped due to context mismatch"
-    [[ "$cnt_skipped" -eq 1 ]] && msg="file was skipped due to context mismatch"
-    echo -e " checkit:${C_ORANGE}${SYMBOL_REPORT}${C_R} $cnt_skipped ${C_MSG2}$msg${C_R}" >&2
-  fi
-
-  # 3. Report MISSING
-  if [[ "$cnt_missing" -gt 0 && "$__CLI_IGNORE_MISSING" != "true" ]]; then
-    local msg="listed files could not be read"
-    [[ "$cnt_missing" -eq 1 ]] && msg="listed file could not be read"
-    echo -e " checkit:${C_ORANGE}${SYMBOL_REPORT}${C_R} $cnt_missing ${C_MSG2}$msg${C_R}" >&2
-  fi
-
-  # 4. Report FAILED (Checksum mismatch)
-  if [[ "$cnt_failed" -gt 0 ]]; then
-    local msg="computed checksums did NOT match"
-    [[ "$cnt_failed" -eq 1 ]] && msg="computed checksum did NOT match"
-    echo -e " checkit:${C_ORANGE}${SYMBOL_REPORT}${C_R} $cnt_failed ${C_MSG2}$msg${C_R}" >&2
-  fi
-
-  # 5. Report BAD SIGNATURES
-  if [[ "$cnt_bad_sig" -gt 0 ]]; then
-    local msg="signatures failed verification"
-    [[ "$cnt_bad_sig" -eq 1 ]] && msg="signature failed verification"
-    echo -e " checkit:${C_ORANGE}${SYMBOL_REPORT}${C_R} $cnt_bad_sig ${C_MSG2}$msg${C_R}" >&2
-  fi
-
-  # 6. Report SUCCESS / VERIFIED
-  # Only if NOT quiet
-  if [[ "$__CLI_QUIET" != "true" && "$cnt_ok" -gt 0 ]]; then
-    local summary=" checkit:${C_ORANGE}${SYMBOL_REPORT}${C_R} $cnt_ok ${C_MSG2}Verified${C_R} ${C_MSG2}files${C_R}"
-
-    if [[ "$cnt_signed" -gt 0 ]]; then
-      summary="$summary (${C_GREEN}signed${C_R})"
-    fi
-    echo -e "$summary." >&2
-  fi
-}
-
 # ui::log_clipboard <message>
 ui::log_clipboard() {
   echo -e "${C_CYANG}   ${SYMBOL_CLIPB}$1${C_R}" >&2
 }
 
 # ui::show_version
-# shellcheck disable=SC2059
 ui::show_version() {
-  # Header
   echo -e "${C_BOLD}${APP_NAME}${C_R} ${C_CYAN}v${CHECKIT_VERSION}${C_R}"
   printf "Copyright (C) %s %s.\n" "$APP_YEAR" "$APP_AUTHOR"
-
-  # License Block
-  printf "$(ui::get_msg "license_1")\n" "$APP_LICENSE"
+  ui::fmt_msg "$(ui::get_msg "license_1")\n" "$APP_LICENSE"
   ui::get_msg "license_2"
   ui::get_msg "license_3"
   echo ""
-
-  # Author Block
-  printf "$(ui::get_msg "written_by")\n" "$APP_AUTHOR"
+  ui::fmt_msg "$(ui::get_msg "written_by")\n" "$APP_AUTHOR"
 }
 
 # ui::show_help
 ui::show_help() {
-  # Banner
   echo -e "${C_BOLD}${APP_NAME}${C_R} v${CHECKIT_VERSION}"
   ui::get_msg "desc"
   echo ""
 
-  # Usage Section
   echo -e "${C_YELLOW}$(ui::get_msg "usage_title"):${C_R}"
   ui::get_msg "usage_1"
   ui::get_msg "usage_2"
   ui::get_msg "usage_3"
   echo ""
 
-  # General Options
   echo -e "${C_YELLOW}$(ui::get_msg "sect_general"):${C_R}"
   ui::get_msg "opt_algo"
   ui::get_msg "opt_verify"
@@ -276,7 +389,6 @@ ui::show_help() {
   ui::get_msg "opt_vers"
   echo ""
 
-  # Create Options
   echo -e "${C_YELLOW}$(ui::get_msg "sect_create"):${C_R}"
   ui::get_msg "opt_all"
   ui::get_msg "opt_sign"
@@ -288,7 +400,6 @@ ui::show_help() {
   ui::get_msg "opt_zero"
   echo ""
 
-  # Check Options
   echo -e "${C_YELLOW}$(ui::get_msg "sect_check"):${C_R}"
   ui::get_msg "opt_ignore"
   ui::get_msg "opt_quiet"
@@ -297,6 +408,5 @@ ui::show_help() {
   ui::get_msg "opt_warn"
   echo ""
 
-  # Footer Signature
   echo -e "${C_MAGENTA}Report bugs: ${C_R}${C_BLUE}${APP_WEBSITE}${C_R}"
 }

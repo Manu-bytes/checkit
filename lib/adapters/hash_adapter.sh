@@ -269,7 +269,7 @@ hash_adapter::check_list() {
     # --- MISSING FILE CHECK ---
     if [[ ! -f "$file_line" ]]; then
       if [[ "$__CLI_IGNORE_MISSING" == "true" ]]; then continue; fi
-      ui::log_file_status "MISSING" "$file_line"
+      ui::log_file_status "$ST_MISSING" "$file_line"
       cnt_missing=$((cnt_missing + 1))
       continue
     fi
@@ -293,7 +293,7 @@ hash_adapter::check_list() {
       if [[ "$context_algo" == "sha_family" ]]; then
         target_algo=$(__get_sha_by_length "${#hash_line}")
         if [[ -z "$target_algo" ]]; then
-          ui::log_file_status "SKIPPED" "$file_line" "Not a SHA hash"
+          ui::log_file_status "$ST_SKIP" "$file_line" "Not a SHA hash"
           cnt_skipped=$((cnt_skipped + 1))
           continue
         fi
@@ -311,7 +311,7 @@ hash_adapter::check_list() {
         local ctx_len
         ctx_len=$(hash_adapter::get_algo_length "$context_algo")
         if [[ "${#hash_line}" -ne "$ctx_len" ]]; then
-          ui::log_file_status "SKIPPED" "$file_line" "Format mismatch: expected $context_algo"
+          ui::log_file_status "$ST_SKIP" "$file_line" "Format mismatch: expected $context_algo"
           cnt_skipped=$((cnt_skipped + 1))
           continue
         fi
@@ -330,7 +330,7 @@ hash_adapter::check_list() {
     local expected_len
     expected_len=$(hash_adapter::get_algo_length "$target_algo")
     if [[ "$expected_len" -gt 0 && "${#hash_line}" -ne "$expected_len" ]]; then
-      ui::log_file_status "FAILED" "$file_line" "Format mismatch"
+      ui::log_file_status "$ST_FAIL" "$file_line" "Format mismatch"
       cnt_failed=$((cnt_failed + 1))
       continue
     fi
@@ -360,17 +360,17 @@ hash_adapter::check_list() {
       local sig_status=""
       if type -t gpg::verify_target >/dev/null; then
         if gpg::verify_target "$file_line"; then
-          sig_status="SIGNED"
+          sig_status="$ST_SIGNED"
           cnt_signed=$((cnt_signed + 1))
         elif [[ $? -eq 3 ]]; then
-          sig_status="BAD_SIG"
+          sig_status="$ST_BAD_SIG"
           cnt_bad_sig=$((cnt_bad_sig + 1))
         fi
       fi
-      ui::log_file_status "OK" "$file_line" "$final_algo" "$sig_status"
+      ui::log_file_status "$ST_OK" "$file_line" "$final_algo" "$sig_status"
     else
       cnt_failed=$((cnt_failed + 1))
-      ui::log_file_status "FAILED" "$file_line" "$final_algo"
+      ui::log_file_status "$ST_FAIL" "$file_line" "$final_algo"
     fi
 
   done 3<"$sumfile"
