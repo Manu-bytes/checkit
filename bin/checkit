@@ -47,7 +47,7 @@ do_verify_string() {
   # 2. Primary Verification Attempt
   # We use a subshell or capture exit code specifically to handle the fallback logic logic manually
   if hash_adapter::verify "$algo" "$file" "$hash"; then
-    ui::log_success "$file ($algo)"
+    ui::log_file_status "OK" "$file" "$algo"
     return "$EX_SUCCESS"
   fi
 
@@ -60,14 +60,14 @@ do_verify_string() {
     if [[ -n "$fallback_algo" ]]; then
       # Retry with fallback
       if hash_adapter::verify "$fallback_algo" "$file" "$hash"; then
-        ui::log_success "$file ($fallback_algo)"
+        ui::log_file_status "OK" "$file" "$fallback_algo"
         return "$EX_SUCCESS"
       fi
     fi
   fi
 
   # 4. Final Failure Report
-  echo "[FAILED] $file ($algo)"
+  ui::log_file_status "FAILED" "$file" "$algo"
   return "$EX_INTEGRITY_FAIL"
 }
 
@@ -163,7 +163,7 @@ main() {
     for file in "${__CLI_FILES[@]}"; do
       # Fail fast validation (Standard behavior)
       if [[ ! -f "$file" ]]; then
-        echo "checkit: $file: No such file or directory" >&2
+        ui::log_file_status "MISSING" "$file" ":No such file or directory"
         has_error=true
         continue
       fi
@@ -199,7 +199,7 @@ main() {
           formatted=$(core::format_hash "$__CLI_OUTPUT_FMT" "$algo" "$file" "$hash")
           output_buffer+="$formatted"
         else
-          echo "Error: Failed to calculate $algo for $file" >&2
+          ui::log_error "Error: Failed to calculate $algo for $file"
           has_error=true
         fi
       done

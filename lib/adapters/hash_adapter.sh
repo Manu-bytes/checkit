@@ -215,37 +215,6 @@ hash_adapter::check_list() {
   local cnt_signed=0    # Verified GPG signatures
   local cnt_bad_sig=0   # Failed GPG signatures
 
-  # Internal callback for success
-  __on_success() {
-    local f_path="$1"
-    local f_algo="$2"
-    local extra_info=""
-
-    # Check GPG signature if available
-    if type -t gpg::verify_target >/dev/null; then
-      if gpg::verify_target "$f_path"; then
-        extra_info="${C_GREENH}${SYMBOL_SIGNED}${C_R}"
-        cnt_signed=$((cnt_signed + 1))
-      elif [[ $? -eq 3 ]]; then
-        extra_info="${C_REDH}${SYMBOL_BAD}${C_R}"
-        cnt_bad_sig=$((cnt_bad_sig + 1))
-      fi
-    fi
-
-    if [[ "$__CLI_QUIET" == "true" || "$__CLI_STATUS" == "true" ]]; then
-      return
-    fi
-    ui::log_success "$f_path ($f_algo)" "${extra_info}"
-  }
-
-  # Internal callback for failure
-  __on_failure() {
-    local f_file="$1"
-    local f_algo="$2"
-    if [[ "$__CLI_STATUS" == "true" ]]; then return; fi
-    ui::log_failed "$f_file ($f_algo)"
-  }
-
   # --- CONTEXT DETECTION ---
   local context_algo=""
 
@@ -300,7 +269,7 @@ hash_adapter::check_list() {
     # --- MISSING FILE CHECK ---
     if [[ ! -f "$file_line" ]]; then
       if [[ "$__CLI_IGNORE_MISSING" == "true" ]]; then continue; fi
-      ui::log_missing "$file_line" >&2
+      ui::log_file_status "MISSING" "$file_line"
       cnt_missing=$((cnt_missing + 1))
       continue
     fi
@@ -324,7 +293,7 @@ hash_adapter::check_list() {
       if [[ "$context_algo" == "sha_family" ]]; then
         target_algo=$(__get_sha_by_length "${#hash_line}")
         if [[ -z "$target_algo" ]]; then
-          ui::log_skipped "$file_line ${C_MSG2}(Not a SHA hash)${C_R}"
+          ui::log_file_status "SKIPPED" "$file_line" "Not a SHA hash"
           cnt_skipped=$((cnt_skipped + 1))
           continue
         fi
@@ -342,7 +311,7 @@ hash_adapter::check_list() {
         local ctx_len
         ctx_len=$(hash_adapter::get_algo_length "$context_algo")
         if [[ "${#hash_line}" -ne "$ctx_len" ]]; then
-          ui::log_skipped "$file_line (Format mismatch: expected $context_algo)"
+          ui::log_file_status "SKIPPED" "$file_line" "Format mismatch: expected $context_algo"
           cnt_skipped=$((cnt_skipped + 1))
           continue
         fi
@@ -361,32 +330,47 @@ hash_adapter::check_list() {
     local expected_len
     expected_len=$(hash_adapter::get_algo_length "$target_algo")
     if [[ "$expected_len" -gt 0 && "${#hash_line}" -ne "$expected_len" ]]; then
-      ui::log_failed "$file_line (Format mismatch)"
+      ui::log_file_status "FAILED" "$file_line" "Format mismatch"
       cnt_failed=$((cnt_failed + 1))
       continue
     fi
 
+    # Verification Signatures
+    local verify_result=false
+    local final_algo="$target_algo"
+
     if hash_adapter::verify "$target_algo" "$file_line" "$hash_line"; then
-      __on_success "$file_line" "$target_algo"
-      cnt_ok=$((cnt_ok + 1))
+      verify_result=true
     else
-      local recovered=false
       if [[ "$allow_fallback" == "true" ]]; then
         local fallback
         fallback=$(hash_adapter::get_fallback_algo "$target_algo")
         if [[ -n "$fallback" ]]; then
           if hash_adapter::verify "$fallback" "$file_line" "$hash_line"; then
-            __on_success "$file_line" "$fallback"
-            cnt_ok=$((cnt_ok + 1))
-            recovered=true
+            verify_result=true
+            final_algo=$fallback
           fi
         fi
       fi
+    fi
+    if [[ "$verify_result" == "true" ]]; then
+      cnt_ok=$((cnt_ok + 1))
 
-      if [[ "$recovered" == "false" ]]; then
-        __on_failure "$file_line" "$target_algo"
-        cnt_failed=$((cnt_failed + 1))
+      # Verification GPG
+      local sig_status=""
+      if type -t gpg::verify_target >/dev/null; then
+        if gpg::verify_target "$file_line"; then
+          sig_status="SIGNED"
+          cnt_signed=$((cnt_signed + 1))
+        elif [[ $? -eq 3 ]]; then
+          sig_status="BAD_SIG"
+          cnt_bad_sig=$((cnt_bad_sig + 1))
+        fi
       fi
+      ui::log_file_status "OK" "$file_line" "$final_algo" "$sig_status"
+    else
+      cnt_failed=$((cnt_failed + 1))
+      ui::log_file_status "FAILED" "$file_line" "$final_algo"
     fi
 
   done 3<"$sumfile"
@@ -394,65 +378,26 @@ hash_adapter::check_list() {
   # --- FINAL SUMMARY REPORT ---
   # Only print summary if --status is NOT active
   if [[ "$__CLI_STATUS" != "true" ]]; then
-
-    # A. Report formatting warnings
-    if [[ "$cnt_bad_lines" -gt 0 ]]; then
-      local msg="lines are"
-      [[ "$cnt_bad_lines" -eq 1 ]] && msg="line is"
-      if [[ "$__CLI_WARN" == "true" || "$__CLI_STRICT" == "true" ]]; then
-        ui::log_report $cnt_bad_lines " $msg improperly formatted"
-      fi
-    fi
-
-    # B. Report skipped files (Context mismatch)
-    if [[ "$cnt_skipped" -gt 0 ]]; then
-      local msg="files were"
-      [[ "$cnt_skipped" -eq 1 ]] && msg="file was"
-      ui::log_report $cnt_skipped " $msg skipped due to context mismatch"
-    fi
-
-    # C. Report missing files
-    if [[ "$cnt_missing" -gt 0 && "$__CLI_IGNORE_MISSING" != "true" ]]; then
-      local msg="listed files"
-      [[ "$cnt_missing" -eq 1 ]] && msg="listed file"
-      ui::log_report $cnt_missing " $msg could not be read"
-    fi
-
-    # D. Report failed checksums
-    if [[ "$cnt_failed" -gt 0 ]]; then
-      local msg="computed checksums"
-      [[ "$cnt_failed" -eq 1 ]] && msg="computed checksum"
-      ui::log_report ${cnt_failed} " $msg did NOT match"
-    fi
-
-    # E. Report bad signatures (GPG)
-    if [[ "$cnt_bad_sig" -gt 0 ]]; then
-      local msg="signatures"
-      [[ "$cnt_bad_sig" -eq 1 ]] && msg="signature"
-      ui::log_report $cnt_bad_sig " $msg failed verification"
-    fi
-
-    # F. Report success stats (Optional but requested)
-    # Only if NOT quiet, to give positive feedback
-    if [[ "$__CLI_QUIET" != "true" && "$cnt_ok" -gt 0 ]]; then
-      # Build a summary string
-      local summary="checkit: ${C_MSG2}Verified${C_R} $cnt_ok ${C_MSG2}files${C_R}"
-      if [[ "$cnt_signed" -gt 0 ]]; then
-        summary="$summary ($cnt_signed ${C_GREEN}signed${C_R})"
-      fi
-      echo -e "$summary." >&2
-    fi
+    # Delegate visual responsibility to UI adapter
+    # Order: OK, FAILED, MISSING, SKIPPED, BAD_SIG, SIGNED, BAD_LINES
+    ui::log_report_summary \
+      "$cnt_ok" \
+      "$cnt_failed" \
+      "$cnt_missing" \
+      "$cnt_skipped" \
+      "$cnt_bad_sig" \
+      "$cnt_signed" \
+      "$cnt_bad_lines"
   fi
 
   # --- EXIT CODE DETERMINATION ---
-  # Strict Mode: Any warning (bad format, skips) is fatal
+  # Strict Mode logic
   if [[ "$__CLI_STRICT" == "true" ]]; then
     if [[ "$cnt_bad_lines" -gt 0 || "$cnt_skipped" -gt 0 ]]; then
       return "$EX_INTEGRITY_FAIL"
     fi
   fi
 
-  # Standard Failures
   if [[ "$cnt_missing" -gt 0 || "$cnt_failed" -gt 0 || "$cnt_bad_sig" -gt 0 ]]; then
     return "$EX_INTEGRITY_FAIL"
   fi

@@ -99,6 +99,56 @@ ui::get_msg() {
 
 # 3. Public Functions
 # -------------------
+# ui::log_file_status
+# Centralized printing of processed file status lines
+# Args:
+#   $1 - status: "OK", "FAILED", "MISSING", "SKIPPED", "BAD_LINES"
+#   $2 - file: filename
+#   $3 - algo: (optional) algorithm used
+#   $4 - extra: (optional) additional info (e.g., "SIGNED", "BAD_SIG")
+ui::log_file_status() {
+  local status="$1"
+  local file="$2"
+  local algo="${3:-}"
+  local extra="${4:-}"
+
+  case "$status" in
+  "OK")
+    # Return immediately if in STATUS mode
+    if [[ "${__CLI_STATUS:-false}" == "true" ]]; then return; fi
+    # Do not print OK when in quiet mode
+    if [[ "${__CLI_QUIET:-false}" == "true" ]]; then return; fi
+
+    local extra_text=""
+    if [[ "$extra" == "SIGNED" ]]; then
+      extra_text=" ${C_GREENH}${SYMBOL_SIGNED:-[SIGNED]}${C_R}"
+    elif [[ "$extra" == "BAD_SIG" ]]; then
+      extra_text=" ${C_REDH}${SYMBOL_BAD:-[BAD SIG]}${C_R}"
+    fi
+
+    echo -e "${C_GREEN}${SYMBOL_CHECK:-[OK]} $file${C_R} ($algo)${extra_text}" >&2
+    ;;
+
+  "FAILED")
+    # Return immediately if in STATUS mode
+    if [[ "${__CLI_STATUS:-false}" == "true" ]]; then return; fi
+    echo -e "${C_RED}${SYMBOL_FAILED:-[FAILED]} $file${C_R} ($algo)" >&2
+    ;;
+
+  "MISSING")
+    if [[ "${__CLI_IGNORE_MISSING:-false}" == "false" ]]; then
+      echo -e "${C_MSG1}${SYMBOL_MISSING:-[MISSING]} $file${C_R}" >&2
+    fi
+    ;;
+
+  "SKIPPED")
+    # Return immediately if in STATUS mode
+    if [[ "${__CLI_STATUS:-false}" == "true" ]]; then return; fi
+    local reason="$algo"
+    echo -e "${C_LORANGE}${SYMBOL_SKIPPED:-[SKIPPED]} $file${C_R}${C_MSG2} ($reason)${C_R}" >&2
+    ;;
+  esac
+}
 
 # ui::log_info <message>
 ui::log_info() {
@@ -107,36 +157,12 @@ ui::log_info() {
   fi
 }
 
-# ui::log_success <message>
-ui::log_success() {
-  # Print green check only when not in quiet or status mode
-  if [[ "${__CLI_QUIET:-false}" == "false" && "${__CLI_STATUS:-false}" == "false" ]]; then
-    echo -e "${C_GREEN}${SYMBOL_CHECK}$1${C_R}$2"
-  fi
-}
-
-# ui::log_skipped <message>
-ui::log_skipped() {
-  echo -e "${C_LORANGE}${SYMBOL_SKIPPED}$1${C_R}"
-}
-
-# ui::log_failed <message>
-ui::log_failed() {
-  echo -e "${C_RED}${SYMBOL_FAILED}$1${C_R}"
-}
-
 # ui::log_warning <message>
 ui::log_warning() {
   echo -e "${C_ORANGE}${SYMBOL_WARNING}$1${C_R}" >&2
 }
 
-# ui::log_missing <message>
-ui::log_missing() {
-  if [[ "${__CLI_IGNORE_MISSING:-false}" == "false" ]]; then
-    echo -e "${C_MSG1}${SYMBOL_MISSING}$1${C_R}" >&2
-  fi
-}
-
+# ui::log_critical <message>
 ui::log_critical() {
   echo -e "${C_RED}${SYMBOL_CRITICAL}$1${C_R}" >&2
 }
@@ -146,9 +172,63 @@ ui::log_error() {
   echo -e "${C_RED}${SYMBOL_ERROR}$1${C_R}" >&2
 }
 
-# ui::log_report <message>
-ui::log_report() {
-  echo -e "checkit:${C_ORANGE}${SYMBOL_REPORT}${C_R}$1${C_MSG2}$2${C_R}" >&2
+# ui::log_report_summary <message>
+ui::log_report_summary() {
+  local cnt_ok="$1"
+  local cnt_failed="$2"
+  local cnt_missing="$3"
+  local cnt_skipped="$4"
+  local cnt_bad_sig="$5"
+  local cnt_signed="$6"
+  local cnt_bad_lines="$7"
+
+  # 1. Report formatting warnings (BAD LINES)
+  if [[ "$cnt_bad_lines" -gt 0 ]]; then
+    if [[ "$__CLI_WARN" == "true" || "$__CLI_STRICT" == "true" ]]; then
+      local msg="lines are improperly formatted"
+      [[ "$cnt_bad_lines" -eq 1 ]] && msg="line is improperly formatted"
+      echo -e " checkit:${C_ORANGE}${SYMBOL_REPORT}${C_R} $cnt_bad_lines ${C_MSG2}$msg${C_R}" >&2
+    fi
+  fi
+
+  # 2. Report SKIPPED
+  if [[ "$cnt_skipped" -gt 0 ]]; then
+    local msg="files were skipped due to context mismatch"
+    [[ "$cnt_skipped" -eq 1 ]] && msg="file was skipped due to context mismatch"
+    echo -e " checkit:${C_ORANGE}${SYMBOL_REPORT}${C_R} $cnt_skipped ${C_MSG2}$msg${C_R}" >&2
+  fi
+
+  # 3. Report MISSING
+  if [[ "$cnt_missing" -gt 0 && "$__CLI_IGNORE_MISSING" != "true" ]]; then
+    local msg="listed files could not be read"
+    [[ "$cnt_missing" -eq 1 ]] && msg="listed file could not be read"
+    echo -e " checkit:${C_ORANGE}${SYMBOL_REPORT}${C_R} $cnt_missing ${C_MSG2}$msg${C_R}" >&2
+  fi
+
+  # 4. Report FAILED (Checksum mismatch)
+  if [[ "$cnt_failed" -gt 0 ]]; then
+    local msg="computed checksums did NOT match"
+    [[ "$cnt_failed" -eq 1 ]] && msg="computed checksum did NOT match"
+    echo -e " checkit:${C_ORANGE}${SYMBOL_REPORT}${C_R} $cnt_failed ${C_MSG2}$msg${C_R}" >&2
+  fi
+
+  # 5. Report BAD SIGNATURES
+  if [[ "$cnt_bad_sig" -gt 0 ]]; then
+    local msg="signatures failed verification"
+    [[ "$cnt_bad_sig" -eq 1 ]] && msg="signature failed verification"
+    echo -e " checkit:${C_ORANGE}${SYMBOL_REPORT}${C_R} $cnt_bad_sig ${C_MSG2}$msg${C_R}" >&2
+  fi
+
+  # 6. Report SUCCESS / VERIFIED
+  # Only if NOT quiet
+  if [[ "$__CLI_QUIET" != "true" && "$cnt_ok" -gt 0 ]]; then
+    local summary=" checkit:${C_ORANGE}${SYMBOL_REPORT}${C_R} $cnt_ok ${C_MSG2}Verified${C_R} ${C_MSG2}files${C_R}"
+
+    if [[ "$cnt_signed" -gt 0 ]]; then
+      summary="$summary (${C_GREEN}signed${C_R})"
+    fi
+    echo -e "$summary." >&2
+  fi
 }
 
 # ui::log_clipboard <message>
