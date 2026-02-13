@@ -18,7 +18,14 @@
 #
 # Returns EX_SUCCESS (0) if copied, EX_OPERATIONAL_ERROR (2) otherwise.
 utils::copy_to_clipboard() {
-  local input="$1"
+  local input
+
+  # Use argument $1 if provided; otherwise read from STDIN (supports piping)
+  if [[ -n "$1" ]]; then
+    input="$1"
+  else
+    input="$(cat)"
+  fi
 
   # MacOS (pbcopy)
   if command -v pbcopy >/dev/null 2>&1; then

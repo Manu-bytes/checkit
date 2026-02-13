@@ -384,21 +384,21 @@ ui::log_info() {
 #
 # $1 - message - The string to log.
 ui::log_warning() {
-  echo -e "${C_ORANGE}${SYMBOL_WARNING}$1${C_R}" >&2
+  echo -e "${C_ORANGE}${SYMBOL_WARNING} $1${C_R}" >&2
 }
 
 # Public: Logs a critical error message to stderr.
 #
 # $1 - message - The string to log.
 ui::log_critical() {
-  echo -e "${C_RED}${SYMBOL_CRITICAL}$1${C_R}" >&2
+  echo -e "${C_RED}${SYMBOL_CRITICAL} $1${C_R}" >&2
 }
 
 # Public: Logs a standard error message to stderr.
 #
 # $1 - message - The string to log.
 ui::log_error() {
-  echo -e "${C_RED}${SYMBOL_ERROR}$1${C_R}" >&2
+  echo -e "${C_RED}${SYMBOL_ERROR} $1${C_R}" >&2
 }
 
 # Public: Logs a clipboard action message.
