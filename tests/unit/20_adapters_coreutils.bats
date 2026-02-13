@@ -1,139 +1,116 @@
 #!/usr/bin/env bats
-
+#
+# tests/unit/20_adapters_coreutils.bats
+# Hash Adapter Unit Tests.
+#
+# Responsibility: Verify that the adapter correctly orchestrates calls to
+# native binaries (sha256sum, b2sum, etc.) and parses their exit codes.
 # shellcheck disable=SC2329
-load '../libs/bats-support/load'
-load '../libs/bats-assert/load'
 
-# Load system under test
-load '../../lib/constants.sh'
-source "./lib/adapters/hash_adapter.sh"
+load '../test_helper'
 
 setup() {
-  touch test_gen.txt
+  load_lib "constants.sh"
+  load_lib "adapters/hash_adapter.sh"
 
-  # Mock for sha256sum
+  # Create a dummy test file
+  touch "${BATS_TMPDIR}/test_gen.txt"
+  TEST_FILE="${BATS_TMPDIR}/test_gen.txt"
+
+  # --- MOCKS ---
+  # Define mocks locally to avoid polluting the global namespace.
+  # These simple mocks simulate success/failure for the adapter logic.
+
+  # Mock: sha256sum
+  # Logic: If arg contains "-c", act as verify (silent success).
+  #        Else, act as calculate (output hash).
   sha256sum() {
-    local is_verify=false
-    # Detect -c in any position
-    for arg in "$@"; do
-      if [[ "$arg" == "-c" ]]; then
-        is_verify=true
-        break
-      fi
-    done
-
-    if [[ "$is_verify" == "true" ]]; then
-      cat >/dev/null
-      return 0
-    else
-      # Calculate mode: capture last argument (file)
-      local file=""
-      for arg in "$@"; do file="$arg"; done
-      echo "mock_generated_hash  $file"
-      return 0
-    fi
+    if [[ "$*" == *"-c"* ]]; then return 0; fi
+    echo "mock_sha256_hash  $TEST_FILE"
   }
   export -f sha256sum
 
-  # Mock for shasum
-  shasum() {
-    local is_verify=false
-    for arg in "$@"; do
-      if [[ "$arg" == "-c" ]]; then
-        is_verify=true
-        break
-      fi
-    done
-
-    if [[ "$is_verify" == "true" ]]; then
-      cat >/dev/null
-      return 0
-    else
-      local file=""
-      for arg in "$@"; do file="$arg"; done
-      echo "mock_generated_hash  $file"
-      return 0
-    fi
-  }
-  export -f shasum
-
-  # Mock for b2sum
+  # Mock: b2sum (same logic)
   b2sum() {
-    local is_verify=false
-    for arg in "$@"; do
-      if [[ "$arg" == "-c" ]]; then
-        is_verify=true
-        break
-      fi
-    done
-
-    if [[ "$is_verify" == "true" ]]; then
-      cat >/dev/null
-      return 0
-    else
-      local file=""
-      for arg in "$@"; do file="$arg"; done
-      echo "mock_b2_hash  $file"
-      return 0
-    fi
+    if [[ "$*" == *"-c"* ]]; then return 0; fi
+    echo "mock_b2_hash  $TEST_FILE"
   }
   export -f b2sum
+
+  # Mock: shasum (Perl script wrapper)
+  shasum() {
+    if [[ "$*" == *"-c"* ]]; then return 0; fi
+    echo "mock_shasum_hash  $TEST_FILE"
+  }
+  export -f shasum
 }
 
 teardown() {
-  rm -f test_gen.txt
+  rm -f "$TEST_FILE"
 }
 
-@test "Adapter: hash_adapter::verify constructs correct command/pipe for SHA-256" {
-  # Generate a valid-length hash (64 chars)
-  local valid_len_hash
-  valid_len_hash=$(printf 'a%.0s' {1..64})
+# --- Verification Logic ---
 
-  run hash_adapter::verify "sha256" "test_gen.txt" "$valid_len_hash"
+@test "Adapter: verify calls native sha256sum correctly" {
+  # 64 chars = sha256
+  local hash
+  hash=$(printf 'a%.0s' {1..64})
+
+  run hash_adapter::verify "sha256" "$TEST_FILE" "$hash"
   assert_success
 }
 
-@test "Adapter: hash_adapter::verify fails when underlying command fails (integrity error)" {
-  local valid_len_hash
-  valid_len_hash=$(printf 'a%.0s' {1..64})
+@test "Adapter: verify fails when underlying binary returns error" {
+  local hash
+  hash=$(printf 'a%.0s' {1..64})
 
-  # Override mocks locally to simulate failure
+  # Override mock to simulate corruption
   sha256sum() { return 1; }
   export -f sha256sum
-  shasum() { return 1; }
-  export -f shasum
 
-  run hash_adapter::verify "sha256" "test_gen.txt" "$valid_len_hash"
+  shasum() { return 1; }
+  export -f sha256sum
+
+  run hash_adapter::verify "sha256" "$TEST_FILE" "$hash"
   assert_failure "$EX_INTEGRITY_FAIL"
 }
 
-@test "Adapter: hash_adapter::verify returns operational error if file missing" {
-  run hash_adapter::verify "sha256" "missing_file.txt" "hash"
+@test "Adapter: verify returns operational error if file missing" {
+  run hash_adapter::verify "sha256" "non_existent_file.txt" "hash"
   assert_failure "$EX_OPERATIONAL_ERROR"
 }
 
-@test "Adapter: hash_adapter::calculate generates hash for file" {
-  run hash_adapter::calculate "sha256" "test_gen.txt"
-
-  # Output must match the format defined in the setup mocks
-  assert_output "mock_generated_hash  test_gen.txt"
+@test "Adapter: verify fails on length mismatch (b2 alias strictness)" {
+  # 'blake2' implies 512 bits (128 chars).
+  # Providing a short hash (3 chars) should trigger integrity fail before calling binary.
+  local short_hash="abc"
+  run hash_adapter::verify "blake2" "$TEST_FILE" "$short_hash"
+  assert_failure "$EX_INTEGRITY_FAIL"
 }
 
-@test "Adapter: hash_adapter::calculate handles missing file" {
+@test "Adapter: verify fails on mismatched alias length (b2-128 vs long hash)" {
+  # b2-128 = 32 chars. Providing 56 chars (224 bits) should fail.
+  local long_hash
+  long_hash=$(printf '1%.0s' {1..56})
+  run hash_adapter::verify "blake2-128" "$TEST_FILE" "$long_hash"
+  assert_failure "$EX_INTEGRITY_FAIL"
+}
+
+# --- Calculation Logic ---
+
+@test "Adapter: calculate generates proper output format" {
+  run hash_adapter::calculate "sha256" "$TEST_FILE"
+
+  assert_success
+  # Must match the mocked output
+  if [[ "$CHECKIT_FORCE_PERL" == "true" ]]; then
+    assert_output "mock_shasum_hash  $TEST_FILE"
+  else
+    assert_output "mock_sha256_hash  $TEST_FILE"
+  fi
+}
+
+@test "Adapter: calculate handles missing file gracefully" {
   run hash_adapter::calculate "sha256" "missing.txt"
   assert_failure "$EX_OPERATIONAL_ERROR"
-}
-
-@test "Adapter: hash_adapter::verify enforces strict length for aliases (b2/blake2-512)" {
-  # 128 chars expected for blake2-512
-  local short_hash="abc"
-  run hash_adapter::verify "blake2" "test_gen.txt" "$short_hash"
-  assert_failure "$EX_INTEGRITY_FAIL"
-}
-
-@test "Adapter: hash_adapter::verify fails on mismatched custom alias (b2-128 vs 224-bit hash)" {
-  # b2-128 expects 32 chars. Input is 56 chars.
-  local long_hash="11111111111111111111111111111111111111111111111111111111"
-  run hash_adapter::verify "blake2-128" "test_gen.txt" "$long_hash"
-  assert_failure "$EX_INTEGRITY_FAIL"
 }

@@ -1,34 +1,33 @@
 #!/usr/bin/env bats
+#
+# tests/unit/00_smoke.bats
+# Smoke Tests: Validates basic environment integrity.
+#
+# Responsibility: Ensure the test harness loads and the executable is accessible.
 
 load '../test_helper'
 
-@test "Smoke: The test environment loads correctly." {
+@test "Smoke: The test environment loads correctly" {
   run true
   assert_success
 }
 
-@test "Smoke: The checkit executable exists and is executable." {
-  run test -x "$CHECKIT_EXEC"
-  assert_success
+@test "Smoke: The checkit executable exists and is executable" {
+  assert [ -x "$CHECKIT_EXEC" ]
 }
 
-@test "Smoke: checkit can be invoked" {
-  run "$CHECKIT_EXEC" || true
+@test "Smoke: checkit rejects execution without arguments (Exit Code 2)" {
+  run "$CHECKIT_EXEC"
 
-  # Accept absolute success
-  if [ "$status" -eq 0 ]; then
-    return 0
-  fi
+  # Expect EX_OPERATIONAL_ERROR (2) defined in constants.sh
+  assert_failure 2
 
-  # Accept common usage/arguments exit code
-  if [ "$status" -eq 2 ]; then
-    return 0
-  fi
+  # Ensure some help/usage text is printed
+  assert_output --partial "Usage"
+}
 
-  # Accept if output contains help/usage text
-  if echo "$output" | grep -qiE 'usage|help|--help|-h'; then
-    return 0
-  fi
-
-  fail "Executable failed to run properly: exit=$status output=$(echo "$output" | tr '\n' ' ')"
+@test "Smoke: checkit --version returns success" {
+  run "$CHECKIT_EXEC" --version
+  assert_success
+  assert_output --partial "checkit v"
 }

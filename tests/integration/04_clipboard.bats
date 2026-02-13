@@ -1,58 +1,90 @@
 #!/usr/bin/env bats
+#
+# tests/integration/04_clipboard.bats
+# Integration Test: Clipboard Functionality
+#
+# Responsibility: Validate that the --copy flag correctly pipes the output
+# to the system clipboard (simulated via mocks in PATH).
 
 load '../test_helper'
 
 setup() {
-  source "$PROJECT_ROOT/lib/constants.sh"
+  load_lib "constants.sh"
 
-  TEST_FILE="clip_test.txt"
-  echo ""copy me >"$TEST_FILE"
+  # 1. Create a secure sandbox
+  TEST_DIR="$(mktemp -d "${BATS_TMPDIR}/checkit_clipboard_XXXXXX")"
+  TEST_FILE="${TEST_DIR}/clip_test.txt"
+  echo "copy me" >"$TEST_FILE"
 
-  # Directory for fake binaries
-  MOCK_BIN_DIR="$BATS_TMPDIR/checkit_mocks"
+  # Output file where the mock will write the "copied" content
+  CLIPBOARD_OUT="${TEST_DIR}/clipboard_content"
+
+  # 2. Setup Mock Binaries Directory
+  MOCK_BIN_DIR="${TEST_DIR}/bin"
   mkdir -p "$MOCK_BIN_DIR"
 
-  # Generic script that saves input to a file
-  # Note: Uses absolute path for 'cat' to avoid PATH issues inside the mock
-  local MOCK_SCRIPT="$MOCK_BIN_DIR/generic_mock"
+  # 3. Create a generic mock script
+  # This script reads STDIN (what checkit pipes to it) and saves it to a file.
+  local MOCK_SCRIPT="${MOCK_BIN_DIR}/generic_mock"
+
   cat <<EOF >"$MOCK_SCRIPT"
 #!/bin/bash
-/bin/cat > "$BATS_TMPDIR/clipboard_content"
+# Capture stdin to the output file
+cat > "$CLIPBOARD_OUT"
 exit 0
 EOF
   chmod +x "$MOCK_SCRIPT"
 
-  # Create symlinks for all supported tools
+  # 4. Alias ALL supported clipboard tools to this mock
+  # This ensures that no matter what OS run the test, checkit finds our mock first.
   ln -s "$MOCK_SCRIPT" "$MOCK_BIN_DIR/pbcopy"
   ln -s "$MOCK_SCRIPT" "$MOCK_BIN_DIR/wl-copy"
   ln -s "$MOCK_SCRIPT" "$MOCK_BIN_DIR/xclip"
   ln -s "$MOCK_SCRIPT" "$MOCK_BIN_DIR/xsel"
 
-  # Inject mock dir into PATH, but PRESERVE system paths
-  # explicitly adding /usr/bin and /bin to ensure core utils are found
+  # 5. Inject Mock Dir into PATH (Prepend to take precedence)
   export PATH="$MOCK_BIN_DIR:$PATH"
 }
 
 teardown() {
-  rm -f "$TEST_FILE"
-  rm -rf "$MOCK_BIN_DIR"
-  rm -f "$BATS_TMPDIR/clipboard_content"
+  rm -rf "$TEST_DIR"
 }
 
-@test "Integration: checkit --copy copies hash to clipboard" {
-  # Executing with --copy flag
+@test "Integration: checkit --copy copies hash + filename to clipboard" {
+  # 1. Execution
   run "$CHECKIT_EXEC" "$TEST_FILE" --copy
 
   assert_success
 
-  # Verify invocation
-  if [ ! -f "$BATS_TMPDIR/clipboard_content" ]; then
-    # Debugging info
-    echo "Debug: Output of checkit:" >&2
-    echo "$output" >&2
-    fail "Clipboard tool was not invoked (mock file missing). Path used: $PATH"
+  # 2. Verify invocation
+  if [ ! -f "$CLIPBOARD_OUT" ]; then
+    fail "Clipboard tool was not invoked (output file missing). PATH used: $PATH"
   fi
 
-  run cat "$BATS_TMPDIR/clipboard_content"
+  # 3. Verify content
+  # The clipboard should contain the Hash AND the Filename (default format)
+  run cat "$CLIPBOARD_OUT"
   assert_output --partial "clip_test.txt"
+
+  # Check for a hash-like string (SHA256 length is 64)
+  # We assume a standard hash is generated.
+  local content
+  content=$(cat "$CLIPBOARD_OUT")
+  if [[ ! "$content" =~ [a-f0-9]{32,} ]]; then
+    fail "Clipboard content does not look like a hash: $content"
+  fi
+}
+
+@test "Integration: checkit --copy works with --output json" {
+  # 1. Execution with JSON format
+  run "$CHECKIT_EXEC" "$TEST_FILE" --output json --copy
+
+  assert_success
+
+  # 2. Verify content
+  run cat "$CLIPBOARD_OUT"
+
+  # Should be valid JSON
+  assert_output --partial '"algorithm":'
+  assert_output --partial '"filename":'
 }

@@ -34,11 +34,11 @@ _escape_json() {
 # Returns the escaped string to stdout.
 _escape_xml() {
   local input="$1"
-  local output="${input//&/&amp;}" # Ampersand first
-  output="${output//</&lt;}"       # Less than
-  output="${output//>/&gt;}"       # Greater than
-  output="${output//\"/&quot;}"    # Double quote
-  output="${output//\'/&apos;}"    # Single quote
+  local output="${input//&/\&amp;}" # Ampersand
+  output="${output//</\&lt;}"       # Less than
+  output="${output//>/\&gt;}"       # Greater than
+  output="${output//\"/\&quot;}"    # Double quote
+  output="${output//\'/\&apos;}"    # Single quote
   echo "$output"
 }
 
