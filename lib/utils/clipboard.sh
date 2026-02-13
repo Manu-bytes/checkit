@@ -1,40 +1,50 @@
 #!/usr/bin/env bash
+#
+# lib/utils/clipboard.sh
+# Clipboard Utility: System clipboard integration.
+#
+# Responsibility: Detect the available display server (X11, Wayland, macOS)
+# and interface with the corresponding clipboard tool to copy text.
 
-# utils::copy_to_clipboard
-# Attempts to copy the provided text to the system clipboard
-# by automatically detecting the available tool.
+# ----------------------------------------------------------------------
+# Public Functions
+# ----------------------------------------------------------------------
+
+# Public: Copies the provided text to the system clipboard.
+# iterate through common clipboard providers (pbcopy, wl-copy, xclip, xsel)
+# until one succeeds.
 #
-# Arguments:
-#   $1 - Text to copy
+# $1 - text - The string content to copy.
 #
-# Returns:
-#   EX_SUCCESS if copied successfully.
-#   EX_OPERATIONAL_ERROR if no tool found or execution failed.
+# Returns EX_SUCCESS (0) if copied, EX_OPERATIONAL_ERROR (2) otherwise.
 utils::copy_to_clipboard() {
   local input="$1"
 
-  if type pbcopy >/dev/null 2>&1; then
-    # MacOS
-    if echo -n "$input" | pbcopy; then
+  # MacOS (pbcopy)
+  if command -v pbcopy >/dev/null 2>&1; then
+    if printf '%s' "$input" | pbcopy; then
       return "$EX_SUCCESS"
     fi
-  elif type wl-copy >/dev/null 2>&1; then
-    # Wayland
-    if echo -n "$input" | wl-copy; then
+
+  # Wayland (wl-copy)
+  elif command -v wl-copy >/dev/null 2>&1; then
+    if printf '%s' "$input" | wl-copy; then
       return "$EX_SUCCESS"
     fi
-  elif type xclip >/dev/null 2>&1; then
-    # X11 (xclip)
-    if echo -n "$input" | xclip -selection clipboard; then
+
+  # X11 (xclip)
+  elif command -v xclip >/dev/null 2>&1; then
+    if printf '%s' "$input" | xclip -selection clipboard; then
       return "$EX_SUCCESS"
     fi
-  elif type xsel >/dev/null 2>&1; then
-    # X11 (xsel)
-    if echo -n "$input" | xsel --clipboard --input; then
+
+  # X11 (xsel)
+  elif command -v xsel >/dev/null 2>&1; then
+    if printf '%s' "$input" | xsel --clipboard --input; then
       return "$EX_SUCCESS"
     fi
   fi
 
-  # If we reached here, no tool was found or the tool returned failure.
+  # Fallback: No tool found or execution failed
   return "$EX_OPERATIONAL_ERROR"
 }

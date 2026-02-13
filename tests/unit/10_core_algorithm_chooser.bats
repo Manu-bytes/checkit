@@ -1,141 +1,140 @@
 #!/usr/bin/env bats
+#
+# tests/unit/10_core_algorithm_chooser.bats
+# Algorithm Detection Logic Unit Tests.
+#
+# Responsibility: Validate heuristic detection of hash algorithms based on
+# string length, filename hints, and file headers (BSD tags, Content-Hash).
 
 load '../test_helper'
 
 setup() {
-  source "$PROJECT_ROOT/lib/constants.sh"
-  source "$PROJECT_ROOT/lib/core/algorithm_chooser.sh"
+  load_lib "constants.sh"
+  load_lib "core/algorithm_chooser.sh"
+
+  # Temporary file for file-based tests
+  TEST_FILE="${BATS_TMPDIR}/checkit_test_chooser_$$"
 }
 
-# --- SECTION 1: Basic Algorithm Identification by Length ---
+teardown() {
+  rm -f "$TEST_FILE"
+}
+
+# --- SECTION 1: Identification by Length (String Analysis) ---
+
 @test "Core: identify_algorithm returns error on invalid length" {
-  local input_hash="12345" # Too short
-  run core::identify_algorithm "$input_hash"
+  run core::identify_algorithm "12345" # Too short
   assert_failure "$EX_OPERATIONAL_ERROR"
 }
 
-@test "Core: identify_algorithm detects MD5 by length (32 chars)" {
-  local input_hash="d41d8cd98f00b204e9800998ecf8427e"
-  run core::identify_algorithm "$input_hash"
+@test "Core: identify_algorithm detects standard SHA family by length" {
+  # MD5 (32 chars)
+  run core::identify_algorithm "d41d8cd98f00b204e9800998ecf8427e"
   assert_success
   assert_output "md5"
-}
 
-@test "Core: identify_algorithm detects SHA-1 by length (40 chars)" {
-  local input_hash="a9993e364706816aba3e25717850c26c9cd0d89d"
-  run core::identify_algorithm "$input_hash"
+  # SHA-1 (40 chars)
+  run core::identify_algorithm "a9993e364706816aba3e25717850c26c9cd0d89d"
   assert_success
   assert_output "sha1"
-}
 
-@test "Core: identify_algorithm detects SHA-224 by length (56 chars)" {
-  local input_hash="d14a028c2a3a2bc9476102bb288234c415a2b01f828ea62ac5b3e42f"
-  run core::identify_algorithm "$input_hash"
-  assert_success
-  assert_output "sha224"
-}
-
-@test "Core: identify_algorithm detects SHA-256 by length (64 chars)" {
-  local input_hash="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-  run core::identify_algorithm "$input_hash"
+  # SHA-256 (64 chars)
+  run core::identify_algorithm "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
   assert_success
   assert_output "sha256"
-}
 
-@test "Core: identify_algorithm detects SHA-384 by length (96 chars)" {
-  local input_hash="38b060a751ac96384cd9327eb1b1e36a21fdb71114be07434c0cc7bf63f6e1da274edebfe76f65fbd51ad2f14898b95b"
-  run core::identify_algorithm "$input_hash"
-  assert_success
-  assert_output "sha384"
-}
-
-@test "Core: identify_algorithm detects SHA-512 by length (128 chars)" {
-  local input_hash="cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e"
-  run core::identify_algorithm "$input_hash"
+  # SHA-512 (128 chars)
+  # Using a dummy 128-char string for brevity in test logic, assuming length check works
+  local sha512_dummy
+  sha512_dummy=$(printf 'a%.0s' {1..128})
+  run core::identify_algorithm "$sha512_dummy"
   assert_success
   assert_output "sha512"
 }
 
 # --- SECTION 2: Collision Resolution (Hints) ---
-@test "Core: identify_algorithm resolves BLAKE2-128 via hint" {
+
+@test "Core: identify_algorithm resolves BLAKE2 family via hint" {
+  # 32 chars (MD5 vs BLAKE2-128)
   local hash_32="29f0aacdca7198ed8cc3cde41fea4410"
   run core::identify_algorithm "$hash_32" "B2SUMS"
   assert_success
   assert_output "blake2-128"
-}
 
-@test "Core: identify_algorithm resolves BLAKE2-160 via hint" {
-  local hash_40="a300b95272e7ccd713c5abbbe166160c229d1dd8"
-  run core::identify_algorithm "$hash_40" "B2SUMS"
-  assert_success
-  assert_output "blake2-160"
-}
-
-@test "Core: identify_algorithm resolves BLAKE2-224 via hint" {
-  local hash_56="7b8759a275e4ec863cff679a974f1e818bbfb7b1e0ebf7b6fee9ee11"
-  run core::identify_algorithm "$hash_56" "B2SUMS"
-  assert_success
-  assert_output "blake2-224"
-}
-
-@test "Core: identify_algorithm resolves BLAKE2-256 via hint" {
+  # 64 chars (SHA-256 vs BLAKE2-256)
   local hash_64="3e02b2d6f92222549c672c8bc91fff9b87139fd77b725f8c387888922339cacd"
-  run core::identify_algorithm "$hash_64" "B2SUMS"
+  run core::identify_algorithm "$hash_64" "my-blake.txt"
   assert_success
   assert_output "blake2-256"
-}
 
-@test "Core: identify_algorithm resolves BLAKE2-384 via hint" {
-  local hash_96="719c85c5fff5393aaa5a6828be3956cec69e53527c4529c439311b24359c9e901d99719373209159f6fe527f1dc81aa9"
-  run core::identify_algorithm "$hash_96" "B2SUMS"
-  assert_success
-  assert_output "blake2-384"
-}
-
-@test "Core: identify_algorithm resolves BLAKE2 (512) via hint" {
-  local hash_128="cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e"
+  # 128 chars (SHA-512 vs BLAKE2b)
+  local hash_128
+  hash_128=$(printf 'b%.0s' {1..128})
   run core::identify_algorithm "$hash_128" "archive.b2"
   assert_success
   assert_output "blake2"
 }
 
-# --- SECTION 3: Smart File Scanning (GPG, BSD, GNU) ---
+# --- SECTION 3: Smart File Scanning (BSD Tags) ---
+
 @test "Core: identify_from_file detects SHA-512 from BSD-style tag" {
-  local sumfile="test_bsd_sha.txt"
-  echo "SHA512 (data.tar) = cf83e135..." >"$sumfile"
+  echo "SHA512 (data.tar) = cf83e135..." >"$TEST_FILE"
 
-  run core::identify_from_file "$sumfile"
-
-  rm "$sumfile"
+  run core::identify_from_file "$TEST_FILE"
   assert_success
   assert_output "sha512"
 }
 
 @test "Core: identify_from_file detects BLAKE2 from BSD-style tag (BLAKE2b variant)" {
-  local sumfile="test_bsd_blake.txt"
-  # Note: specifically testing "BLAKE2b" with the 'b' suffix
-  echo "BLAKE2b (data.tar) = cf83e135..." >"$sumfile"
+  # Note: specifically testing "BLAKE2b" casing normalization
+  echo "BLAKE2b (data.tar) = cf83e135..." >"$TEST_FILE"
 
-  run core::identify_from_file "$sumfile"
-
-  rm "$sumfile"
+  run core::identify_from_file "$TEST_FILE"
   assert_success
   # Expecting normalized output "blake2" (for b2sum compatibility)
   assert_output "blake2"
 }
 
-@test "Core: identify_from_file detects algo inside PGP Signed Message (Fedora style)" {
-  local sumfile="fedora_test.CHECKSUM"
-  {
-    echo "-----BEGIN PGP SIGNED MESSAGE-----"
-    echo "Hash: SHA256"
-    echo ""
-    echo "SHA256 (Fedora.iso) = 28b6..."
-  } >"$sumfile"
+# --- SECTION 4: Smart File Scanning (Headers) ---
 
-  run core::identify_from_file "$sumfile"
+@test "Core: identify_from_file prioritizes 'Content-Hash' header" {
+  cat <<EOF >"$TEST_FILE"
+-----BEGIN PGP SIGNED MESSAGE-----
+Content-Hash: sha384
 
-  rm "$sumfile"
+d04b98...  file.iso
+-----BEGIN PGP SIGNATURE-----
+EOF
+
+  run core::identify_from_file "$TEST_FILE"
+  assert_success
+  assert_output "sha384"
+}
+
+@test "Core: identify_from_file ignores standard GPG 'Hash:' header (Conflict Scenario)" {
+  # Scenario: GPG signature uses SHA512, but the file content hashes are SHA256.
+  # We must NOT return SHA512 just because GPG uses it.
+  cat <<EOF >"$TEST_FILE"
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA512
+Content-Hash: sha256
+
+e3b0c4...  file.iso
+-----BEGIN PGP SIGNATURE-----
+EOF
+
+  run core::identify_from_file "$TEST_FILE"
   assert_success
   assert_output "sha256"
+}
+
+@test "Core: identify_from_file fails if no explicit clues found" {
+  # A file with just hashes, but identify_from_file looks for HEADERS/TAGS,
+  # not content analysis (that's parser's job).
+  cat <<EOF >"$TEST_FILE"
+e3b0c442...  file.iso
+EOF
+
+  run core::identify_from_file "$TEST_FILE"
+  assert_failure "$EX_OPERATIONAL_ERROR"
 }

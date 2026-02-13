@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
-
-# Global constants and exit codes for checkit.
 #
-# This file contains the standard exit codes and global variables
-# used throughout the application to ensure consistency.
+# lib/constants.sh
+# Global Constants: Application-wide definitions and configuration.
+#
+# Responsibility: Define immutable values for exit codes, internal status protocols,
+# colors, and UI symbols. Loads initial user configuration to determine UI mode.
 # shellcheck disable=SC2034
 
 # ----------------------------------------------------------------------
-# Exit Codes
+# 1. Exit Codes
 # ----------------------------------------------------------------------
 
-# Success: Operation completed successfully (integrity verified or hash generated).
+# Success: Operation completed successfully.
 readonly EX_SUCCESS=0
 
 # Integrity Failure: Checksum mismatch found.
@@ -19,10 +20,12 @@ readonly EX_INTEGRITY_FAIL=1
 # Operational Error: File not found, invalid argument, permission denied.
 readonly EX_OPERATIONAL_ERROR=2
 
-# Security Failure: Invalid or untrusted signature (.asc/.sig).
+# Security Failure: Invalid or untrusted signature.
 readonly EX_SECURITY_FAIL=3
 
-# Version file
+# ----------------------------------------------------------------------
+# 2. Metadata & Versioning
+# ----------------------------------------------------------------------
 readonly VERSION_FILE="$PROJECT_ROOT/VERSION"
 
 if [[ -f "$VERSION_FILE" ]]; then
@@ -31,3 +34,131 @@ if [[ -f "$VERSION_FILE" ]]; then
 else
   readonly CHECKIT_VERSION="unknown"
 fi
+
+readonly APP_NAME="checkit"
+readonly APP_AUTHOR="Manu-bytes"
+APP_YEAR="$(date +%Y)"
+readonly APP_YEAR
+readonly APP_LICENSE="GPLv3+"
+readonly APP_WEBSITE="https://github.com/Manu-bytes/checkit"
+
+# ----------------------------------------------------------------------
+# 3. Internal Status Keys (The Protocol)
+# ----------------------------------------------------------------------
+# Contract between Logic (Core/Adapters) and Presentation (UI).
+# Used by UI adapter to determine symbol/text/color output.
+
+readonly ST_OK="status_ok"             # Verification passed
+readonly ST_FAIL="status_fail"         # Hash mismatch or verify failed
+readonly ST_MISSING="status_missing"   # File not found
+readonly ST_SKIP="status_skip"         # Algorithm/Format mismatch
+readonly ST_SIGNED="status_signed"     # GPG Signature Verified
+readonly ST_BAD_SIG="status_bad_sig"   # GPG Signature Invalid
+readonly ST_BAD_LINE="status_bad_line" # Malformed line in sumfile
+
+# ----------------------------------------------------------------------
+# 4. Configuration & Colors
+# ----------------------------------------------------------------------
+# Define colors only if output is an interactive terminal (stdout is TTY).
+
+if [[ -t 1 ]]; then
+  readonly C_R="\033[0m"              # Reset
+  readonly C_BOLD="\033[1m"           # Bold
+  readonly C_RED="\033[38;5;196m"     # Red
+  readonly C_REDH="\033[38;5;160m"    # Red High
+  readonly C_GREEN="\033[32m"         # Green
+  readonly C_GREENH="\033[38;5;46m"   # Green High
+  readonly C_YELLOW="\033[33m"        # Yellow
+  readonly C_ORANGE="\033[38;5;208m"  # Orange
+  readonly C_LORANGE="\033[38;5;167m" # Light Orange
+  readonly C_BLUE="\033[38;5;63m"     # Blue
+  readonly C_CYAN="\033[36m"          # Cyan
+  readonly C_CYANG="\033[38;5;49m"    # Cyan Green
+  readonly C_MAGENTA="\033[35m"       # Magenta
+  readonly C_MSG1="\033[38;5;243m"    # Gray Dark
+  readonly C_MSG2="\033[38;5;250m"    # Gray Light
+else
+  readonly C_R=""
+  readonly C_BOLD=""
+  readonly C_RED=""
+  readonly C_GREEN=""
+  readonly C_YELLOW=""
+  readonly C_ORANGE=""
+  readonly C_LORANGE=""
+  readonly C_BLUE=""
+  readonly C_CYAN=""
+  readonly C_CYANG=""
+  readonly C_MAGENTA=""
+  readonly C_MSG1=""
+  readonly C_MSG2=""
+fi
+
+# ----------------------------------------------------------------------
+# 5. UI Symbols & Mode Configuration
+# ----------------------------------------------------------------------
+
+# Paths
+readonly CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/checkit"
+readonly CONFIG_FILE="$CONFIG_DIR/checkit.conf"
+
+# Default Mode
+MODE="ascii"
+
+# Load User Configuration
+if [[ -f "$CONFIG_FILE" ]]; then
+  # shellcheck disable=SC1090
+  source "$CONFIG_FILE"
+fi
+
+# Normalize MODE (Bash 4.0+ Native)
+MODE="${MODE,,}"
+
+case $MODE in
+"nerd" | "nerdfonts" | "nerdfont")
+  # Level: High (Nerd Fonts)
+  readonly SYMBOL_INFO=" "
+  readonly SYMBOL_CHECK="✔"
+  readonly SYMBOL_MISSING="󰃹"
+  readonly SYMBOL_FAILED="󱈸"
+  readonly SYMBOL_SKIPPED="󱔕"
+  readonly SYMBOL_SIGNED=" "
+  readonly SYMBOL_BAD=""
+  readonly SYMBOL_WARNING=" "
+  readonly SYMBOL_REPORT="󰅾"
+  readonly SYMBOL_ERROR=" "
+  readonly SYMBOL_CRITICAL="󰝧 "
+  readonly SYMBOL_CLIPB="󰢨 "
+  ;;
+
+"unicode" | "icons" | "icon")
+  # Level: Medium (Unicode/Emojis)
+  readonly SYMBOL_INFO="🏷️"
+  readonly SYMBOL_CHECK="✅"
+  readonly SYMBOL_MISSING="🔍"
+  readonly SYMBOL_FAILED="❗"
+  readonly SYMBOL_SKIPPED="🦘"
+  readonly SYMBOL_SIGNED="📝"
+  readonly SYMBOL_BAD=" 📝❌"
+  readonly SYMBOL_WARNING="⚠️"
+  readonly SYMBOL_REPORT="📑"
+  readonly SYMBOL_ERROR="❌"
+  readonly SYMBOL_CRITICAL="⛔"
+  readonly SYMBOL_CLIPB="📋"
+  ;;
+
+*)
+  # Level: Low (ASCII / Default)
+  readonly SYMBOL_INFO="   [INFO] "
+  readonly SYMBOL_CHECK="     [OK]"
+  readonly SYMBOL_MISSING="[MISSING]"
+  readonly SYMBOL_FAILED=" [FAILED]"
+  readonly SYMBOL_SKIPPED="[SKIPPED]"
+  readonly SYMBOL_SIGNED="[SIGNED]"
+  readonly SYMBOL_BAD="[BAD SIGNED]"
+  readonly SYMBOL_WARNING="[WARNING]"
+  readonly SYMBOL_REPORT=" WARNING:"
+  readonly SYMBOL_ERROR="ERROR: "
+  readonly SYMBOL_CRITICAL="[CRITICAL]"
+  readonly SYMBOL_CLIPB="[Context]"
+  ;;
+esac

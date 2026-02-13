@@ -1,8 +1,25 @@
 #!/usr/bin/env bash
+#
+# lib/adapters/gpg.sh
+# GPG Adapter: Wrapper for GnuPG operations.
+#
+# Responsibility: Handle cryptographic signing and verification of files
+# and data streams, abstracting the complexity of the 'gpg' binary.
 
-# Helper: internal to search for disconnected signatures
+# ----------------------------------------------------------------------
+# Internal Helper Functions
+# ----------------------------------------------------------------------
+
+# Internal: Locates a detached signature file for a given target.
+# Checks for standard extensions (.asc, .sig, .gpg) in order of preference.
+#
+# $1 - file - The path to the target file.
+#
+# Returns the path to the signature file to stdout, or returns 1 if not found.
 gpg::find_detached_sig() {
   local file="$1"
+  local ext
+
   for ext in ".asc" ".sig" ".gpg"; do
     if [[ -f "${file}${ext}" ]]; then
       echo "${file}${ext}"
@@ -12,35 +29,51 @@ gpg::find_detached_sig() {
   return 1
 }
 
-# gpg::detect_signature
-# Checks if the file contains a PGP header or if a detached signature exists.
+# ----------------------------------------------------------------------
+# Public Functions
+# ----------------------------------------------------------------------
+
+# Public: Detects if a file contains a PGP signature.
+# Checks for both inline clear-signed headers and the presence of detached
+# signature files.
+#
+# $1 - file - The path to the file to inspect.
+#
+# Returns 0 if a signature is detected, 1 otherwise.
 gpg::detect_signature() {
   local file="$1"
-  # Check 1: Inline Clear-Sign
+
+  # Check 1: Inline Clear-Sign header detection
   if grep -q "^-----BEGIN PGP SIGNED MESSAGE-----" "$file" 2>/dev/null; then
     return 0
   fi
+
   # Check 2: Detached signature presence
   if gpg::find_detached_sig "$file" >/dev/null; then
     return 0
   fi
+
   return 1
 }
 
-# gpg::verify
-# Verifies the signature of a file (Inline or Detached).
+# Public: Verifies the signature of a file (Inline or Detached).
+# Automatically detects the verification mode based on file artifacts.
+#
+# $1 - file - The path to the file to verify.
+#
+# Returns EX_SUCCESS, EX_SECURITY_FAIL (Bad Sig), or EX_OPERATIONAL_ERROR.
 gpg::verify() {
   local file="$1"
   local output
   local status
 
-  # Determine verification mode
+  # 1. Determine Verification Mode
   local detached_sig
   detached_sig=$(gpg::find_detached_sig "$file")
 
+  # 2. Execute GPG
   if [[ -n "$detached_sig" ]]; then
     # Mode: Detached (gpg --verify SIG DATA)
-    # Redirect stderr to stdout to capture status messages
     output=$(gpg --verify "$detached_sig" "$file" 2>&1)
     status=$?
   else
@@ -49,33 +82,37 @@ gpg::verify() {
     status=$?
   fi
 
-  # --- Status Analysis Logic ---
-
+  # 3. Status Analysis Logic
   if [[ "$status" -eq 0 ]]; then
-    # GPG returns 0 for "Good signature", even if the key is untrusted/unknown.
-    # The warning "This key is not certified" is printed to stderr but exit code is 0.
+    # GPG returns 0 for "Good signature", even if the key is untrusted.
     return "$EX_SUCCESS"
   fi
 
-  # Parse Failure Reason
-  if echo "$output" | grep -qi "BAD signature"; then
+  # 4. Error Parsing (Bash Native Regex)
+  # Case-insensitive matching for common GPG error strings.
+  local output_lower="${output,,}"
+
+  if [[ "$output_lower" =~ "bad signature" ]]; then
     echo "$output"
     return "$EX_SECURITY_FAIL"
   fi
 
-  if echo "$output" | grep -qiE "No public key|public key not found"; then
+  if [[ "$output_lower" =~ "no public key" || "$output_lower" =~ "public key not found" ]]; then
     echo "$output"
     return "$EX_OPERATIONAL_ERROR"
   fi
 
-  # Generic error
+  # Generic error fallback
   echo "$output"
   return "$EX_OPERATIONAL_ERROR"
 }
 
-# gpg::verify_target
-# Silently verify a target file for the presence and validity of its signature.
-# Returns: 0 (Signature OK), 1 (Bad signature), 2 (No signature or error)
+# Public: Silently verifies a target file if a signature exists.
+# Designed for automated checks where missing signatures are not fatal errors.
+#
+# $1 - file - The path to the file to verify.
+#
+# Returns 0 (Signature OK), 1 (Bad signature), 2 (No signature found).
 gpg::verify_target() {
   local file="$1"
   local sig_file
@@ -83,7 +120,7 @@ gpg::verify_target() {
   sig_file=$(gpg::find_detached_sig "$file")
 
   if [[ -z "$sig_file" ]]; then
-    return 2 # No hay firma, no es un error, simplemente no hay nada que hacer
+    return 2 # No signature found, strictly operational info
   fi
 
   local output
@@ -93,15 +130,20 @@ gpg::verify_target() {
   if [[ "$status" -eq 0 ]]; then
     return "$EX_SUCCESS"
   else
-    if echo "$output" | grep -qi "BAD signature"; then
+    local output_lower="${output,,}"
+    if [[ "$output_lower" =~ "bad signature" ]]; then
       return "$EX_SECURITY_FAIL"
     fi
     return "$EX_OPERATIONAL_ERROR" # Missing key, etc.
   fi
 }
 
-# gpg::sign
-# Signs a file (Clear-sign by default for text visibility)
+# Public: Signs a file using Clear-Sign mode (Inline).
+# Useful for text files where readability is required.
+#
+# $1 - file - The path to the file to sign.
+#
+# Returns EX_SUCCESS on success, EX_OPERATIONAL_ERROR on failure.
 gpg::sign() {
   local file="$1"
   if gpg --clearsign --output "${file}.asc" "$file"; then
@@ -111,18 +153,21 @@ gpg::sign() {
   return "$EX_OPERATIONAL_ERROR"
 }
 
-# gpg::sign_data
-# Signs data passed via stdin using the specified mode.
-# Args:
-#   $1 - content string
-#   $2 - mode ("clear", "detach", "standard")
-#   $3 - armor ("true" or "false")
+# Public: Signs data passed via stdin.
+# Supports multiple signing modes and ASCII armoring.
+#
+# $1 - content - The string content to sign.
+# $2 - mode    - Signing mode: "detach", "standard", or default (clearsign).
+# $3 - armor   - Boolean string ("true"/"false") to enable ASCII armor.
+#
+# Returns the signed content to stdout (or GPG exit code on failure).
 gpg::sign_data() {
   local content="$1"
   local mode="$2"
   local armor="$3"
   local args=()
 
+  # 1. Determine Mode
   case "$mode" in
   detach)
     args+=("--detach-sign")
@@ -136,19 +181,21 @@ gpg::sign_data() {
     ;;
   esac
 
-  # 2. Armor
+  # 2. Apply Armor
   if [[ "$armor" == "true" ]]; then
     args+=("--armor")
   fi
+
   echo "$content" | gpg "${args[@]}" -
   return $?
 }
 
-# gpg::sign_file
-# Creates a detached signature for a file on disk.
-# Args:
-#   $1 - file path to sign
-#   $2 - armor ("true" or "false")
+# Public: Creates a detached signature for a file on disk.
+#
+# $1 - file  - The path to the file to sign.
+# $2 - armor - Boolean string ("true"/"false") to enable ASCII armor.
+#
+# Returns EX_SUCCESS on success, EX_OPERATIONAL_ERROR on failure.
 gpg::sign_file() {
   local file="$1"
   local armor="$2"
