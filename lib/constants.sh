@@ -124,7 +124,7 @@ case $MODE in
   readonly SYMBOL_SIGNED=" "
   readonly SYMBOL_BAD=""
   readonly SYMBOL_WARNING=" "
-  readonly SYMBOL_REPORT="󰅾"
+  readonly SYMBOL_REPORT="󰅾 "
   readonly SYMBOL_ERROR=" "
   readonly SYMBOL_CRITICAL="󰝧 "
   readonly SYMBOL_CLIPB="󰢨 "
@@ -156,9 +156,9 @@ case $MODE in
   readonly SYMBOL_SIGNED="[SIGNED]"
   readonly SYMBOL_BAD="[BAD SIGNED]"
   readonly SYMBOL_WARNING="[WARNING]"
-  readonly SYMBOL_REPORT=" WARNING:"
+  readonly SYMBOL_REPORT="WARNING:"
   readonly SYMBOL_ERROR="ERROR: "
   readonly SYMBOL_CRITICAL="[CRITICAL]"
-  readonly SYMBOL_CLIPB="[Context]"
+  readonly SYMBOL_CLIPB="[Context] "
   ;;
 esac

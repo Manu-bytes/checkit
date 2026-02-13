@@ -144,8 +144,16 @@ main() {
     if [[ "$__CLI_ALGO_SET" == "true" ]]; then
       algo_strategy="$__CLI_ALGO"
     fi
-    hash_adapter::check_list "$algo_strategy" "$sumfile"
-    exit $?
+
+    # Clipboard Integration
+    if [[ "$__CLI_COPY" == "true" ]]; then
+      hash_adapter::check_list "$algo_strategy" "$sumfile" 2>&1 | tee >(utils::copy_to_clipboard)
+      ui::log_clipboard "$(ui::get_msg 'msg_copy_ok')"
+      exit "${PIPESTATUS[0]}"
+    else
+      hash_adapter::check_list "$algo_strategy" "$sumfile"
+      exit "$?"
+    fi
     ;;
 
   "create")
