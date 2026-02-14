@@ -56,12 +56,13 @@ gpg::detect_signature() {
   return 1
 }
 
-# Public: Verifies the signature of a file (Inline or Detached).
-# Automatically detects the verification mode based on file artifacts.
+# Public: Verifies the signature of a SUMFILE (List).
+# This is used for the main list verification (checkit -c list.txt).
+# Returns the output on failure for logging.
 #
 # $1 - file - The path to the file to verify.
 #
-# Returns EX_SUCCESS, EX_SECURITY_FAIL (Bad Sig), or EX_OPERATIONAL_ERROR.
+# Returns EX_SUCCESS, EX_SECURITY_FAIL, or EX_OPERATIONAL_ERROR.
 gpg::verify() {
   local file="$1"
   local output
@@ -84,12 +85,10 @@ gpg::verify() {
 
   # 3. Status Analysis Logic
   if [[ "$status" -eq 0 ]]; then
-    # GPG returns 0 for "Good signature", even if the key is untrusted.
     return "$EX_SUCCESS"
   fi
 
-  # 4. Error Parsing (Bash Native Regex)
-  # Case-insensitive matching for common GPG error strings.
+  # 4. Error Parsing
   local output_lower="${output,,}"
 
   if [[ "$output_lower" =~ "bad signature" ]]; then
@@ -107,20 +106,22 @@ gpg::verify() {
   return "$EX_OPERATIONAL_ERROR"
 }
 
-# Public: Silently verifies a target file if a signature exists.
-# Designed for automated checks where missing signatures are not fatal errors.
+# Public: Verifies a detached signature for a TARGET file (e.g. image.iso).
 #
-# $1 - file - The path to the file to verify.
+# $1 - file - The path to the data file.
 #
-# Returns 0 (Signature OK), 1 (Bad signature), 2 (No signature found).
-gpg::verify_target() {
+# Returns:
+#   EX_SUCCESS (0)          - Signature Good
+#   EX_SECURITY_FAIL (3)    - Signature BAD (Tampered)
+#   EX_OPERATIONAL_ERROR (2)- Missing Key / No Sig / GPG Error
+gpg::verify_detached() {
   local file="$1"
   local sig_file
 
   sig_file=$(gpg::find_detached_sig "$file")
 
   if [[ -z "$sig_file" ]]; then
-    return 2 # No signature found, strictly operational info
+    return "$EX_OPERATIONAL_ERROR" # No signature found
   fi
 
   local output
@@ -131,15 +132,26 @@ gpg::verify_target() {
     return "$EX_SUCCESS"
   else
     local output_lower="${output,,}"
+
+    # 1. Detect Explicit Bad Signature
     if [[ "$output_lower" =~ "bad signature" ]]; then
+      echo "$output"
       return "$EX_SECURITY_FAIL"
     fi
-    return "$EX_OPERATIONAL_ERROR" # Missing key, etc.
+
+    # 2. Detect Missing Key (Common operational error)
+    if [[ "$output_lower" =~ "no public key" || "$output_lower" =~ "public key not found" ]]; then
+      echo "$output"
+      return "$EX_OPERATIONAL_ERROR"
+    fi
+
+    # 3. Detect Corrupted Packets / Other Errors
+    echo "$output"
+    return "$EX_OPERATIONAL_ERROR"
   fi
 }
 
 # Public: Signs a file using Clear-Sign mode (Inline).
-# Useful for text files where readability is required.
 #
 # $1 - file - The path to the file to sign.
 #
@@ -154,13 +166,12 @@ gpg::sign() {
 }
 
 # Public: Signs data passed via stdin.
-# Supports multiple signing modes and ASCII armoring.
 #
 # $1 - content - The string content to sign.
 # $2 - mode    - Signing mode: "detach", "standard", or default (clearsign).
 # $3 - armor   - Boolean string ("true"/"false") to enable ASCII armor.
 #
-# Returns the signed content to stdout (or GPG exit code on failure).
+# Returns the signed content to stdout.
 gpg::sign_data() {
   local content="$1"
   local mode="$2"

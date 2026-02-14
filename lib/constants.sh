@@ -134,7 +134,7 @@ case $MODE in
   readonly SYMBOL_FAILED="󱈸"
   readonly SYMBOL_SKIPPED="󱔕"
   readonly SYMBOL_SIGNED=" "
-  readonly SYMBOL_BAD=""
+  readonly SYMBOL_BAD=" "
   readonly SYMBOL_WARNING=" "
   readonly SYMBOL_REPORT="󰅾 "
   readonly SYMBOL_ERROR=" "
