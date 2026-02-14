@@ -411,18 +411,37 @@ hash_adapter::check_list() {
     if [[ "$verify_result" == "true" ]]; then
       cnt_ok=$((cnt_ok + 1))
 
-      # GPG Signature Check
-      local sig_status=""
-      if command -v gpg::verify_target >/dev/null; then
-        if gpg::verify_target "$file_line"; then
-          sig_status="$ST_SIGNED"
+      # --- GPG Target Signature Check ---
+      local extra_status=""
+      local gpg_out=""
+      local gpg_code=0
+
+      if gpg::detect_signature "$file_line"; then
+        gpg_out=$(gpg::verify_detached "$file_line")
+        gpg_code=$?
+
+        if [[ "$gpg_code" -eq "$EX_SUCCESS" ]]; then
+          extra_status="$ST_SIGNED"
           cnt_signed=$((cnt_signed + 1))
-        elif [[ $? -eq 3 ]]; then
-          sig_status="$ST_BAD_SIG"
+        else
+          # --- Strict Mode ---
+          if [[ "$__CLI_STRICT_SECURITY" == "true" ]]; then
+            ui::log_file_status "$ST_OK" "$file_line" "$final_algo" "$ST_BAD_SIG"
+            if [[ "$gpg_code" -eq "$EX_SECURITY_FAIL" ]]; then
+              ui::log_critical "$(ui::get_msg 'err_sig_bad_strict')"
+            else
+              ui::log_critical "$(ui::get_msg 'err_sig_missing_strict')"
+            fi
+            if [[ -n "$gpg_out" ]]; then
+              echo "$gpg_out" >&2
+            fi
+            return "$EX_SECURITY_FAIL"
+          fi
+          extra_status="$ST_BAD_SIG"
           cnt_bad_sig=$((cnt_bad_sig + 1))
         fi
       fi
-      ui::log_file_status "$ST_OK" "$file_line" "$final_algo" "$sig_status"
+      ui::log_file_status "$ST_OK" "$file_line" "$final_algo" "$extra_status"
     else
       cnt_failed=$((cnt_failed + 1))
       ui::log_file_status "$ST_FAIL" "$file_line" "$final_algo"
