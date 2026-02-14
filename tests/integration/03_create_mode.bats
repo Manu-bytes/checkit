@@ -54,7 +54,7 @@ teardown() {
 
 @test "Integration: checkit generates JSON output correctly" {
   # This verifies the entire pipeline: Args -> Logic -> Formatter -> Output
-  run "$CHECKIT_EXEC" "$TEST_FILE" --output json
+  run "$CHECKIT_EXEC" "$TEST_FILE" --format json
 
   assert_success
   # Simple JSON structure check
