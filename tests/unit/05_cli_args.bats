@@ -17,7 +17,7 @@ setup() {
   load_lib "cli/args.sh"
 
   # 2. Mock UI Output
-  # Prevent error messages from cluttering the test output.
+  # Prevent error messages from cluttering the test format.
   # We only care about the state of global variables.
   ui::log_error() { :; }
   ui::log_warning() { :; }
@@ -84,13 +84,13 @@ setup() {
   assert_equal "$__CLI_SIGN_MODE" "detach"
 }
 
-@test "CLI: --output accepts valid formats (json)" {
-  cli::parse_args "file.txt" "--output" "json"
+@test "CLI: --format accepts valid formats (json)" {
+  cli::parse_args "file.txt" "--format" "json"
   assert_equal "$__CLI_OUTPUT_FMT" "json"
 }
 
-@test "CLI: --output rejects invalid formats" {
-  run cli::parse_args "file.txt" "--output" "invalid_fmt"
+@test "CLI: --format rejects invalid formats" {
+  run cli::parse_args "file.txt" "--format" "invalid_fmt"
   assert_failure "$EX_OPERATIONAL_ERROR"
 }
 

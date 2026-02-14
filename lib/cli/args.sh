@@ -139,7 +139,7 @@ cli::parse_args() {
       __CLI_OUTPUT_FMT="bsd"
       shift
       ;;
-    -o | --output)
+    --format)
       local fmt="$2"
       if [[ "$fmt" =~ ^(text|gnu|bsd|json|xml)$ ]]; then
         [[ "$fmt" == "text" ]] && fmt="gnu"
@@ -149,6 +149,15 @@ cli::parse_args() {
         return "$EX_OPERATIONAL_ERROR"
       fi
       shift 2
+      ;;
+    -o | --output)
+      if [[ -n "$2" && "$2" != -* ]]; then
+        __CLI_OUTPUT_FILE="$2"
+        shift 2
+      else
+        ui::log_error "Missing filename for --output"
+        return "$EX_OPERATIONAL_ERROR"
+      fi
       ;;
     -h | --help)
       cli::print_usage
@@ -180,18 +189,28 @@ cli::parse_args() {
   fi
 
   case "${#__CLI_FILES[@]}" in
+  0)
+    ui::log_warning "$(ui::get_msg 'warn_arg_missing')"
+    cli::print_usage
+    return "$EX_OPERATIONAL_ERROR"
+    ;;
   1)
     __CLI_MODE="create"
-    __CLI_FILES=("${__CLI_FILES[0]}")
     ;;
   2)
-    __CLI_MODE="verify_string"
-    __CLI_FILE="${__CLI_FILES[0]}"
-    __CLI_HASH="${__CLI_FILES[1]}"
+    if [[ -n "$__CLI_OUTPUT_FILE" ]] ||
+      [[ "$__CLI_OUTPUT_FMT" != "gnu" ]] ||
+      [[ "$__CLI_ALL_ALGOS" == "true" ]] ||
+      [[ "$__CLI_SIGN" == "true" ]]; then
+      __CLI_MODE="create"
+    else
+      __CLI_MODE="verify_string"
+      __CLI_FILE="${__CLI_FILES[0]}"
+      __CLI_HASH="${__CLI_FILES[1]}"
+    fi
     ;;
   *)
-    ui::log_error "$(ui::get_msg 'err_ambiguous_mode')"
-    return "$EX_OPERATIONAL_ERROR"
+    __CLI_MODE="create"
     ;;
   esac
 

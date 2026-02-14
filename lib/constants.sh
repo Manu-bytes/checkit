@@ -101,16 +101,28 @@ fi
 readonly CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/checkit"
 readonly CONFIG_FILE="$CONFIG_DIR/checkit.conf"
 
-# Default Mode
-MODE="ascii"
+# ----------------------------------------------------------------------
+# Logic: Priority Order
+# 1. Environment Variable (CHECKIT_MODE) -> Highest Priority (Tests/CI)
+# 2. Config File (checkit.conf)          -> User Preference
+# 3. Default ("ascii")                   -> Fallback
+# ----------------------------------------------------------------------
 
-# Load User Configuration
+# 1. Load User Configuration
 if [[ -f "$CONFIG_FILE" ]]; then
   # shellcheck disable=SC1090
   source "$CONFIG_FILE"
 fi
 
-# Normalize MODE (Bash 4.0+ Native)
+# 2. Apply Default if MODE is still empty
+MODE="${MODE:-ascii}"
+
+# 3. Override with Environment Variable if set
+if [[ -n "${CHECKIT_MODE:-}" ]]; then
+  MODE="$CHECKIT_MODE"
+fi
+
+# 4. Normalize MODE (Bash 4.0+ Native)
 MODE="${MODE,,}"
 
 case $MODE in
@@ -157,7 +169,7 @@ case $MODE in
   readonly SYMBOL_BAD="[BAD SIGNED]"
   readonly SYMBOL_WARNING="[WARNING]"
   readonly SYMBOL_REPORT="WARNING:"
-  readonly SYMBOL_ERROR="ERROR: "
+  readonly SYMBOL_ERROR="ERROR:"
   readonly SYMBOL_CRITICAL="[CRITICAL]"
   readonly SYMBOL_CLIPB="[Context] "
   ;;

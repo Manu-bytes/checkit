@@ -51,7 +51,7 @@ ui::get_msg() {
     rpt_badsig_pl) echo "firmas fallaron verificación" ;;
     rpt_verify) echo "Verificados" ;;
     rpt_files) echo "archivos" ;;
-    rpt_signed) echo "firmados" ;;
+    rpt_signed) echo "%s firmados" ;;
 
     # --- Errors & Messages ---
     err_algo_id) echo "No se pudo identificar el algoritmo (longitud: %s)." ;;
@@ -80,6 +80,14 @@ ui::get_msg() {
     usage_2) echo "  checkit [ARCHIVO] [OPCIONES]     # Calcular Hash (Modo Creación)" ;;
     usage_3) echo "  checkit -c [SUMFILE] [OPCIONES]  # Verificar hashes (Modo Check)" ;;
 
+    sect_examples) echo "Ejemplos Avanzados" ;;
+    ex_desc_1) echo "  # Crear un manifiesto BLAKE2 firmado para todas las imágenes ISO:" ;;
+    ex_cmd_1) echo "  checkit *.iso --algo b2 --format bsd --sign -o RELEASE.asc" ;;
+    ex_desc_2) echo "  # Generar reporte JSON para múltiples archivos:" ;;
+    ex_cmd_2) echo "  checkit kernel-* --format json -o listado.json" ;;
+    ex_desc_3) echo "  # Verificar integridad y autenticidad (GPG) estricta:" ;;
+    ex_cmd_3) echo "  checkit -c RELEASE.asc --verify-sign" ;;
+
     sect_general) echo "Opciones Generales" ;;
     opt_algo) echo "  -a, --algo <alg>     Especificar algoritmo (md5, sha256, blake2b, etc). Defecto: sha256" ;;
     opt_verify) echo "  -v, --verify-sign    Verificar firma GPG si existe (fuerza modo estricto)" ;;
@@ -93,7 +101,8 @@ ui::get_msg() {
     opt_detach) echo "      --detach-sign    Crear firma separada (requiere escribir a archivo)" ;;
     opt_file) echo "  -f, --file <nombre>  Guardar checksums en archivo (defecto 'CHECKSUMS' si usa --detach-sign)" ;;
     opt_armor) echo "      --armor          Crear salida con armadura ASCII (.asc)" ;;
-    opt_out) echo "  -o, --output <fmt>   Formato de salida: text (gnu), bsd, json, xml" ;;
+    opt_out) echo "  -o, --output <arch>  Escribir resultado en archivo (ignora stdout)" ;;
+    opt_fmt) echo "      --format <fmt>   Formato de salida: text (gnu), bsd, json, xml" ;;
     opt_tag) echo "      --tag            Forzar salida estilo BSD (alias de --output bsd)" ;;
     opt_zero) echo "  -z, --zero           Terminar cada línea con NUL, no nueva línea" ;;
 
@@ -135,7 +144,7 @@ ui::get_msg() {
     rpt_badsig_pl) echo "signatures failed verification" ;;
     rpt_verify) echo "Verified" ;;
     rpt_files) echo "files" ;;
-    rpt_signed) echo "signed" ;;
+    rpt_signed) echo "%s signed" ;;
 
     # --- Errors & Messages ---
     err_algo_id) echo "Could not identify hash algorithm (length: %s)." ;;
@@ -164,6 +173,14 @@ ui::get_msg() {
     usage_2) echo "  checkit [FILE] [OPTIONS]          # Calculate Hash (Create Mode)" ;;
     usage_3) echo "  checkit -c [SUMFILE] [OPTIONS]    # Check multiple hashes (Check Mode)" ;;
 
+    sect_examples) echo "Advanced Examples" ;;
+    ex_desc_1) echo "  # Create a signed BLAKE2 manifest for all ISO images:" ;;
+    ex_cmd_1) echo "  checkit *.iso --algo b2 --format bsd --sign -o RELEASE.asc" ;;
+    ex_desc_2) echo "  # Generate JSON report for multiple kernel files:" ;;
+    ex_cmd_2) echo "  checkit kernel-* --format json -o checksums.json" ;;
+    ex_desc_3) echo "  # Verify integrity and GPG authenticity strictly:" ;;
+    ex_cmd_3) echo "  checkit -c RELEASE.asc --verify-sign" ;;
+
     sect_general) echo "General Options" ;;
     opt_algo) echo "  -a, --algo <alg>     Specify algorithm (md5, sha256, blake2b, etc). Default: sha256" ;;
     opt_verify) echo "  -v, --verify-sign    Verify GPG signature if present (enforces strict mode)" ;;
@@ -177,7 +194,8 @@ ui::get_msg() {
     opt_detach) echo "      --detach-sign    Create a detached signature (requires writing to file)" ;;
     opt_file) echo "  -f, --file <name>    Save checksums to file (default 'CHECKSUMS' if using --detach-sign)" ;;
     opt_armor) echo "      --armor          Create ASCII armored output (.asc)" ;;
-    opt_out) echo "  -o, --output <fmt>   Output format: text (gnu), bsd, json, xml" ;;
+    opt_out) echo "  -o, --output <file>  Write output to file (suppress stdout)" ;;
+    opt_fmt) echo "      --format <fmt>   Select output format: text (gnu), bsd, json, xml" ;;
     opt_tag) echo "      --tag            Force BSD style output (alias for --output bsd)" ;;
     opt_zero) echo "  -z, --zero           End each output line with NUL, not newline" ;;
 
@@ -215,7 +233,7 @@ ui::fmt_msg() {
   format_str=$(ui::get_msg "$key")
 
   # shellcheck disable=SC2059
-  printf "$format_str" "$@" >&2
+  printf "$format_str" "$@"
 }
 
 # Public: Renders the status of a processed file to stderr.
@@ -364,8 +382,8 @@ ui::log_report_summary() {
 
     if [[ "$cnt_signed" -gt 0 ]]; then
       local s_txt
-      s_txt=$(ui::get_msg "rpt_signed")
-      summary="$summary (${C_GREEN}${s_txt}${C_R})"
+      s_txt="$(ui::fmt_msg "$(ui::get_msg "rpt_signed")" "$cnt_signed")"
+      summary="$summary (${C_GREENH}${s_txt}${C_R})"
     fi
     echo -e "$summary." >&2
   fi
@@ -405,7 +423,7 @@ ui::log_error() {
 #
 # $1 - message - The string to log.
 ui::log_clipboard() {
-  echo -e "${C_CYANG}   ${SYMBOL_CLIPB}$1${C_R}" >&2
+  echo -e "${C_CYANG} ${SYMBOL_CLIPB}$1${C_R}" >&2
 }
 
 # Public: Displays the version information and license.
@@ -448,6 +466,7 @@ ui::show_help() {
   ui::get_msg "opt_file"
   ui::get_msg "opt_armor"
   ui::get_msg "opt_out"
+  ui::get_msg "opt_fmt"
   ui::get_msg "opt_tag"
   ui::get_msg "opt_zero"
   echo ""
@@ -459,6 +478,16 @@ ui::show_help() {
   ui::get_msg "opt_strict"
   ui::get_msg "opt_warn"
   echo ""
-
+  # --- Examples ---
+  echo -e "${C_YELLOW}$(ui::get_msg "sect_examples"):${C_R}"
+  echo -e "$(ui::get_msg "ex_desc_1")"
+  echo -e "${C_ORANGE}$(ui::get_msg "ex_cmd_1")${C_R}"
+  echo ""
+  echo -e "$(ui::get_msg "ex_desc_2")"
+  echo -e "${C_ORANGE}$(ui::get_msg "ex_cmd_2")${C_R}"
+  echo ""
+  echo -e "$(ui::get_msg "ex_desc_3")"
+  echo -e "${C_ORANGE}$(ui::get_msg "ex_cmd_3")${C_R}"
+  echo ""
   echo -e "${C_MAGENTA}Report bugs: ${C_R}${C_BLUE}${APP_WEBSITE}${C_R}"
 }

@@ -15,11 +15,11 @@ lint:
 # Run Tests
 unit-test:
 	@echo "Running Unit Tests..."
-	@$(BATS_BIN) --recursive tests/unit
+	@CHECKIT_MODE=ascii $(BATS_BIN) --recursive tests/unit
 
 integration-test:
 	@echo "Running Integration Tests..."
-	@$(BATS_BIN) --recursive tests/integration
+	@CHECKIT_MODE=ascii $(BATS_BIN) --recursive tests/integration
 
 test: unit-test integration-test
 	@echo "Test suite completed"

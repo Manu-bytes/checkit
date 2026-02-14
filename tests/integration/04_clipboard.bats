@@ -75,9 +75,9 @@ teardown() {
   fi
 }
 
-@test "Integration: checkit --copy works with --output json" {
+@test "Integration: checkit --copy works with --format json" {
   # 1. Execution with JSON format
-  run "$CHECKIT_EXEC" "$TEST_FILE" --output json --copy
+  run "$CHECKIT_EXEC" "$TEST_FILE" --format json --copy
 
   assert_success
 

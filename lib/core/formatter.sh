@@ -26,6 +26,34 @@ _escape_json() {
   echo "$output"
 }
 
+# Internal: Maps internal algorithm names to BSD Canonical Tags.
+#
+# $1 - algo - The internal algorithm slug (e.g., b2, sha256).
+#
+# Returns the official BSD tag (e.g., BLAKE2b, SHA256).
+_get_bsd_tag() {
+  local algo="$1"
+  case "$algo" in
+  # Blake Family
+  b2 | blake2 | blake2b) echo "BLAKE2b" ;;
+  b2-256) echo "BLAKE2b-256" ;;
+  b3 | blake3) echo "BLAKE3" ;;
+
+  # SHA Family (Standard usually uppercase)
+  sha1) echo "SHA1" ;;
+  sha224) echo "SHA224" ;;
+  sha256) echo "SHA256" ;;
+  sha384) echo "SHA384" ;;
+  sha512) echo "SHA512" ;;
+
+  # Legacy
+  md5) echo "MD5" ;;
+
+  # Fallback: Just Uppercase it
+  *) echo "${algo^^}" ;;
+  esac
+}
+
 # Internal: Escapes special characters for XML attribute compliance.
 # Handles &, <, >, ", and '.
 #
@@ -63,9 +91,11 @@ core::format_hash() {
 
   case "$fmt" in
   bsd)
-    # BSD Format: ALGO (File) = Hash
-    # uses Bash Parameter Expansion (^^) for uppercase (Bash 4.0+)
-    echo "${algo^^} ($file) = $hash"
+    # BSD Tagged Format: ALGO (File) = Hash
+    # FIX: Usamos la función de mapeo en lugar de usar $algo directamente
+    local tag
+    tag=$(_get_bsd_tag "$algo")
+    echo "$tag ($file) = $hash"
     ;;
 
   json)

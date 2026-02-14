@@ -80,8 +80,8 @@ teardown() {
   assert_output "SHA256 ($TEST_FILE) = $FULL_HASH"
 }
 
-@test "Create: --output json produces valid JSON structure" {
-  run "$CHECKIT_EXEC" --output json "$TEST_FILE"
+@test "Create: --format json produces valid JSON structure" {
+  run "$CHECKIT_EXEC" --format json "$TEST_FILE"
 
   assert_success
   assert_output --partial '"algorithm": "sha256"'
