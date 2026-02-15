@@ -36,7 +36,7 @@ setup() {
   run core::format_hash "json" "sha256" "file.txt" "hash123"
   assert_success
   # We check for key components since whitespace might vary slightly
-  assert_output --partial '"algorithm": "sha256"'
+  assert_output --partial '"algorithm": "SHA256"'
   assert_output --partial '"filename": "file.txt"'
   assert_output --partial '"hash": "hash123"'
 }
@@ -57,16 +57,16 @@ setup() {
 # --- Format: XML ---
 
 @test "Formatter: XML format outputs <file> element" {
-  run core::format_hash "xml" "sha256" "file.txt" "hash123"
+  run core::format_hash "xml" "SHA256" "file.txt" "hash123"
   assert_success
-  assert_output '  <file algorithm="sha256" name="file.txt">hash123</file>'
+  assert_output '  <file algorithm="SHA256" name="file.txt">hash123</file>'
 }
 
 @test "Formatter: XML format escapes special attributes" {
   # Filename with XML special chars: <, >, &, "
   local weird_file='<file> & "quote"'
 
-  run core::format_hash "xml" "md5" "$weird_file" "hash123"
+  run core::format_hash "xml" "MD5" "$weird_file" "hash123"
 
   assert_success
   # & -> &amp;

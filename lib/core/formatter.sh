@@ -31,13 +31,16 @@ _escape_json() {
 # $1 - algo - The internal algorithm slug (e.g., b2, sha256).
 #
 # Returns the official BSD tag (e.g., BLAKE2b, SHA256).
-_get_bsd_tag() {
+_get_tag() {
   local algo="$1"
   case "$algo" in
   # Blake Family
-  b2 | blake2 | blake2b) echo "BLAKE2b" ;;
-  b2-256) echo "BLAKE2b-256" ;;
-  b3 | blake3) echo "BLAKE3" ;;
+  b2 | blake2 | blake2b) echo "BLAKE2" ;;
+  b2-128 | blake2-128 | blake2b-128) echo "BLAKE2-128" ;;
+  b2-160 | blake2-160 | blake2b-160) echo "BLAKE2-160" ;;
+  b2-224 | blake2-224 | blake2b-224) echo "BLAKE2-224" ;;
+  b2-256 | blake2-256 | blake2b-256) echo "BLAKE2-256" ;;
+  b2-384 | blake2-384 | blake2b-384) echo "BLAKE2-384" ;;
 
   # SHA Family (Standard usually uppercase)
   sha1) echo "SHA1" ;;
@@ -94,7 +97,7 @@ core::format_hash() {
     # BSD Tagged Format: ALGO (File) = Hash
     # FIX: Usamos la función de mapeo en lugar de usar $algo directamente
     local tag
-    tag=$(_get_bsd_tag "$algo")
+    tag=$(_get_tag "$algo")
     echo "$tag ($file) = $hash"
     ;;
 
@@ -103,7 +106,7 @@ core::format_hash() {
     # Note: Comma handling for lists is the responsibility of the caller.
     local safe_file
     safe_file=$(_escape_json "$file")
-    echo "    { \"algorithm\": \"$algo\", \"filename\": \"$safe_file\", \"hash\": \"$hash\" }"
+    echo "    { \"algorithm\": \"$(_get_tag "$algo")\", \"filename\": \"$safe_file\", \"hash\": \"$hash\" }"
     ;;
 
   xml)
@@ -111,7 +114,7 @@ core::format_hash() {
     local safe_file
     safe_file=$(_escape_xml "$file")
     local safe_algo
-    safe_algo=$(_escape_xml "$algo")
+    safe_algo=$(_escape_xml "$(_get_tag "$algo")")
     echo "  <file algorithm=\"$safe_algo\" name=\"$safe_file\">$hash</file>"
     ;;
 
