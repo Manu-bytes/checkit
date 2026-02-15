@@ -58,7 +58,7 @@ teardown() {
 
   assert_success
   # Simple JSON structure check
-  assert_output --partial '"algorithm": "sha256"'
+  assert_output --partial '"algorithm": "SHA256"'
   assert_output --partial "\"filename\": \"$TEST_FILE\""
   assert_output --partial '"hash":'
 }

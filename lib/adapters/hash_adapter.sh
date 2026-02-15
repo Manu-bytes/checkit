@@ -146,7 +146,7 @@ hash_adapter::verify() {
 
   # 1. Normalization
   if [[ "$algo" =~ ^b2-?([0-9]+)$ ]]; then algo="blake2-${BASH_REMATCH[1]}"; fi
-  if [[ "$algo" =~ ^blake2b?([0-9]+)$ ]]; then algo="blake2-${BASH_REMATCH[1]}"; fi
+  if [[ "$algo" =~ ^blake2b-?([0-9]+)$ ]]; then algo="blake2-${BASH_REMATCH[1]}"; fi
 
   # 2. Length Validation
   local expected_len
@@ -208,6 +208,10 @@ hash_adapter::calculate() {
   local file="$2"
 
   if [[ ! -f "$file" ]]; then return "$EX_OPERATIONAL_ERROR"; fi
+
+  # Ensure input aliases (b2-160, blake-160) map to internal 'blake2-160'
+  if [[ "$algo" =~ ^b2-?([0-9]+)$ ]]; then algo="blake2-${BASH_REMATCH[1]}"; fi
+  if [[ "$algo" =~ ^blake2b-?([0-9]+)$ ]]; then algo="blake2-${BASH_REMATCH[1]}"; fi
 
   # A) Blake Family
   if [[ "$algo" == "blake2"* ]]; then

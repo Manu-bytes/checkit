@@ -233,7 +233,7 @@ ui::fmt_msg() {
   format_str=$(ui::get_msg "$key")
 
   # shellcheck disable=SC2059
-  printf "$format_str" "$@"
+  printf -- "$format_str" "$@"
 }
 
 # Public: Renders the status of a processed file to stderr.
