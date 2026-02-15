@@ -100,7 +100,7 @@ teardown() {
 
   # 2. Check for Custom Header injection
   # (This helps checkit identify the algo later without guessing)
-  assert_output --partial "Content-Hash: sha384"
+  assert_output --partial "Content-Hash: SHA384"
 
   # 3. Check for Content
   assert_output --partial "$FULL_HASH  $TEST_FILE"

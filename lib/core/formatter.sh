@@ -26,12 +26,33 @@ _escape_json() {
   echo "$output"
 }
 
-# Internal: Maps internal algorithm names to BSD Canonical Tags.
+# Internal: Escapes special characters for XML attribute compliance.
+# Handles &, <, >, ", and '.
+#
+# $1 - input - The raw string to escape.
+#
+# Returns the escaped string to stdout.
+_escape_xml() {
+  local input="$1"
+  local output="${input//&/\&amp;}" # Ampersand
+  output="${output//</\&lt;}"       # Less than
+  output="${output//>/\&gt;}"       # Greater than
+  output="${output//\"/\&quot;}"    # Double quote
+  output="${output//\'/\&apos;}"    # Single quote
+  echo "$output"
+}
+
+# ----------------------------------------------------------------------
+# Public Functions
+# ----------------------------------------------------------------------
+
+# Public: Exposes the canonical tag generation logic.
+# Use this when generating headers (Content-Hash) to match BSD/XML/JSON tags.
 #
 # $1 - algo - The internal algorithm slug (e.g., b2, sha256).
 #
 # Returns the official BSD tag (e.g., BLAKE2b, SHA256).
-_get_tag() {
+core::get_tag() {
   local algo="$1"
   case "$algo" in
   # Blake Family
@@ -57,26 +78,6 @@ _get_tag() {
   esac
 }
 
-# Internal: Escapes special characters for XML attribute compliance.
-# Handles &, <, >, ", and '.
-#
-# $1 - input - The raw string to escape.
-#
-# Returns the escaped string to stdout.
-_escape_xml() {
-  local input="$1"
-  local output="${input//&/\&amp;}" # Ampersand
-  output="${output//</\&lt;}"       # Less than
-  output="${output//>/\&gt;}"       # Greater than
-  output="${output//\"/\&quot;}"    # Double quote
-  output="${output//\'/\&apos;}"    # Single quote
-  echo "$output"
-}
-
-# ----------------------------------------------------------------------
-# Public Functions
-# ----------------------------------------------------------------------
-
 # Public: Formats a single hash entry based on the selected standard.
 # Dispatches the input to the correct formatting logic.
 #
@@ -97,7 +98,7 @@ core::format_hash() {
     # BSD Tagged Format: ALGO (File) = Hash
     # FIX: Usamos la función de mapeo en lugar de usar $algo directamente
     local tag
-    tag=$(_get_tag "$algo")
+    tag=$(core::get_tag "$algo")
     echo "$tag ($file) = $hash"
     ;;
 
@@ -106,7 +107,7 @@ core::format_hash() {
     # Note: Comma handling for lists is the responsibility of the caller.
     local safe_file
     safe_file=$(_escape_json "$file")
-    echo "    { \"algorithm\": \"$(_get_tag "$algo")\", \"filename\": \"$safe_file\", \"hash\": \"$hash\" }"
+    echo "    { \"algorithm\": \"$(core::get_tag "$algo")\", \"filename\": \"$safe_file\", \"hash\": \"$hash\" }"
     ;;
 
   xml)
@@ -114,7 +115,7 @@ core::format_hash() {
     local safe_file
     safe_file=$(_escape_xml "$file")
     local safe_algo
-    safe_algo=$(_escape_xml "$(_get_tag "$algo")")
+    safe_algo=$(_escape_xml "$(core::get_tag "$algo")")
     echo "  <file algorithm=\"$safe_algo\" name=\"$safe_file\">$hash</file>"
     ;;
 

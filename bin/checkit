@@ -253,7 +253,9 @@ main() {
       # Sign buffer if requested (--sign)
       if [[ "$__CLI_SIGN_MODE" == "clear" ]]; then
         if [[ "$__CLI_OUTPUT_FMT" == "gnu" && "$__CLI_ALL_ALGOS" == "false" ]]; then
-          output_buffer="Content-Hash: ${__CLI_ALGO}"$'\n\n'"$output_buffer"
+          local header_tag
+          header_tag=$(core::get_tag "$__CLI_ALGO")
+          output_buffer="Content-Hash: ${header_tag}"$'\n\n'"$output_buffer"
         fi
 
         if signed_content=$(gpg::sign_data "$output_buffer" "clear" "$__CLI_SIGN_ARMOR"); then
