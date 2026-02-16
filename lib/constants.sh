@@ -30,7 +30,6 @@ readonly VERSION_FILE="$PROJECT_ROOT/VERSION"
 
 if [[ -f "$VERSION_FILE" ]]; then
   CHECKIT_VERSION=$(cat "$VERSION_FILE")
-  readonly CHECKIT_VERSION
 else
   readonly CHECKIT_VERSION="unknown"
 fi
@@ -48,13 +47,12 @@ readonly APP_WEBSITE="https://github.com/Manu-bytes/checkit"
 # Contract between Logic (Core/Adapters) and Presentation (UI).
 # Used by UI adapter to determine symbol/text/color output.
 
-readonly ST_OK="status_ok"             # Verification passed
-readonly ST_FAIL="status_fail"         # Hash mismatch or verify failed
-readonly ST_MISSING="status_missing"   # File not found
-readonly ST_SKIP="status_skip"         # Algorithm/Format mismatch
-readonly ST_SIGNED="status_signed"     # GPG Signature Verified
-readonly ST_BAD_SIG="status_bad_sig"   # GPG Signature Invalid
-readonly ST_BAD_LINE="status_bad_line" # Malformed line in sumfile
+readonly ST_OK="status_ok"           # Verification passed
+readonly ST_FAIL="status_fail"       # Hash mismatch or verify failed
+readonly ST_MISSING="status_missing" # File not found
+readonly ST_SKIP="status_skip"       # Algorithm/Format mismatch
+readonly ST_SIGNED="status_signed"   # GPG Signature Verified
+readonly ST_BAD_SIG="status_bad_sig" # GPG Signature Invalid
 
 # ----------------------------------------------------------------------
 # 4. Configuration & Colors
@@ -150,7 +148,7 @@ case $MODE in
   readonly SYMBOL_FAILED="❗"
   readonly SYMBOL_SKIPPED="🦘"
   readonly SYMBOL_SIGNED="📝"
-  readonly SYMBOL_BAD=" 📝❌"
+  readonly SYMBOL_BAD="📝❌"
   readonly SYMBOL_WARNING="⚠️"
   readonly SYMBOL_REPORT="📑"
   readonly SYMBOL_ERROR="❌"

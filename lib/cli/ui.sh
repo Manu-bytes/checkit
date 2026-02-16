@@ -3,8 +3,6 @@
 # lib/cli/ui.sh
 # UI Adapter: Handles User Output, Colors, Icons, and Help Menu
 # Responsibility: Translate Internal Status Keys into human-readable, localized output.
-# localized output. Decouples core logic from presentation.
-#
 
 # ----------------------------------------------------------------------
 # 1. Language Detection
@@ -49,9 +47,9 @@ ui::get_msg() {
     rpt_fail_pl) echo "checksums calculados NO coincidieron" ;;
     rpt_badsig_sg) echo "firma falló verificación" ;;
     rpt_badsig_pl) echo "firmas fallaron verificación" ;;
-    rpt_verify) echo "Verificados" ;;
-    rpt_files) echo "archivos" ;;
-    rpt_signed) echo "%s firmados" ;;
+    rpt_goodsig_sg) echo "firma verificada correctamente" ;;
+    rpt_goodsig_pl) echo "firmas verificadas correctamente" ;;
+    rpt_verify) echo "archivos verificados (hash ok)" ;;
 
     # --- Errors & Messages ---
     err_algo_id) echo "No se pudo identificar el algoritmo (longitud: %s)." ;;
@@ -59,7 +57,7 @@ ui::get_msg() {
     err_sig_bad_strict) echo "Firma INVÁLIDA detectada. Abortando modo estricto." ;;
     warn_sig_bad) echo "Firma INVÁLIDA detectada. La integridad de la lista está comprometida." ;;
     err_sig_missing_strict) echo "Falta clave pública o error GPG. No se puede verificar en estricto." ;;
-    warn_sig_missing) echo "Archivo firmado, pero falta clave pública. Procediendo con verificación de hashes." ;;
+    warn_sig_missing) echo "Archivo firmado; firma corrupta o una clave pública importada no válida. Procediendo con verificación de hashes." ;;
     err_sig_not_found) echo "--verify-sign solicitado pero no se halló firma en %s" ;;
     err_calc_fail) echo "Error: Fallo al calcular %s para %s" ;;
     msg_saved) echo "    Salida guardada en: %s" ;;
@@ -76,9 +74,9 @@ ui::get_msg() {
     # --- Standard Help ---
     desc) echo "Herramienta avanzada de integridad y verificación de hashes." ;;
     usage_title) echo "Uso" ;;
-    usage_1) echo "  checkit [ARCHIVO] [HASH]         # Verificación Rápida" ;;
-    usage_2) echo "  checkit [ARCHIVO] [OPCIONES]     # Calcular Hash (Modo Creación)" ;;
-    usage_3) echo "  checkit -c [SUMFILE] [OPCIONES]  # Verificar hashes (Modo Check)" ;;
+    usage_1) echo "  checkit [ARCHIVO] [HASH]             # Verificación Rápida" ;;
+    usage_2) echo "  checkit [ARCHIVO] [OPCIONES]         # Calcular Hash (Modo Creación)" ;;
+    usage_3) echo "  checkit -c [SUMFILE] [OPCIONES]      # Verificar hashes (Modo Check)" ;;
 
     sect_examples) echo "Ejemplos Avanzados" ;;
     ex_desc_1) echo "  # Crear un manifiesto BLAKE2 firmado para todas las imágenes ISO:" ;;
@@ -142,9 +140,9 @@ ui::get_msg() {
     rpt_fail_pl) echo "computed checksums did NOT match" ;;
     rpt_badsig_sg) echo "signature failed verification" ;;
     rpt_badsig_pl) echo "signatures failed verification" ;;
-    rpt_verify) echo "Verified" ;;
-    rpt_files) echo "files" ;;
-    rpt_signed) echo "%s signed" ;;
+    rpt_goodsig_sg) echo "signature verified successfully" ;;
+    rpt_goodsig_pl) echo "signatures verified successfully" ;;
+    rpt_verify) echo "files passed hash verification" ;;
 
     # --- Errors & Messages ---
     err_algo_id) echo "Could not identify hash algorithm (length: %s)." ;;
@@ -152,7 +150,7 @@ ui::get_msg() {
     err_sig_bad_strict) echo "BAD signature detected. Aborting strict mode." ;;
     warn_sig_bad) echo "BAD signature detected. Integrity of list is compromised." ;;
     err_sig_missing_strict) echo "Public key missing or GPG error. Cannot verify strict." ;;
-    warn_sig_missing) echo "Signed file detected, but Public key missing. Proceeding with hash check." ;;
+    warn_sig_missing) echo "Signed file found; validation failed due to corrupt signature or invalid imported public key. Proceeding with hash check." ;;
     err_sig_not_found) echo "--verify-sign requested but no signature found in %s" ;;
     err_calc_fail) echo "Error: Failed to calculate %s for %s" ;;
     msg_saved) echo "    Output saved to: %s" ;;
@@ -169,9 +167,9 @@ ui::get_msg() {
     # --- Standard Help ---
     desc) echo "Advanced file integrity and hash verification tool." ;;
     usage_title) echo "Usage" ;;
-    usage_1) echo "  checkit [FILE] [HASH]             # Quick Verify" ;;
-    usage_2) echo "  checkit [FILE] [OPTIONS]          # Calculate Hash (Create Mode)" ;;
-    usage_3) echo "  checkit -c [SUMFILE] [OPTIONS]    # Check multiple hashes (Check Mode)" ;;
+    usage_1) echo "  checkit [FILE] [HASH]              # Quick Verify" ;;
+    usage_2) echo "  checkit [FILE] [OPTIONS]           # Calculate Hash (Create Mode)" ;;
+    usage_3) echo "  checkit -c [SUMFILE] [OPTIONS]     # Check multiple hashes (Check Mode)" ;;
 
     sect_examples) echo "Advanced Examples" ;;
     ex_desc_1) echo "  # Create a signed BLAKE2 manifest for all ISO images:" ;;
@@ -231,7 +229,6 @@ ui::fmt_msg() {
   shift
   local format_str
   format_str=$(ui::get_msg "$key")
-
   # shellcheck disable=SC2059
   printf -- "$format_str" "$@"
 }
@@ -250,8 +247,6 @@ ui::log_file_status() {
   local file="$2"
   local info="${3:-}"
   local extra_status="${4:-}"
-
-  # Local variables for display
   local symbol color label extra_text=""
 
   case "$status_key" in
@@ -281,7 +276,6 @@ ui::log_file_status() {
     symbol="$SYMBOL_FAILED"
     color="$C_RED"
     label=$(ui::get_msg "lbl_fail")
-    # Info here usually contains the algo or reason
     echo -e "${color}${symbol:-[$label]} $file${C_R} ($info)" >&2
     ;;
 
@@ -298,12 +292,10 @@ ui::log_file_status() {
     symbol="$SYMBOL_SKIPPED"
     color="$C_LORANGE"
     label=$(ui::get_msg "lbl_skip")
-    # Info contains the reason (e.g. "Not a SHA hash")
     echo -e "${color}${symbol:-[$label]} $file${C_R}${C_MSG2} ($info)${C_R}" >&2
     ;;
 
   *)
-    # Fallback for unknown states
     echo -e "${C_MSG1}[UNKNOWN] $file${C_R}" >&2
     ;;
   esac
@@ -365,33 +357,24 @@ ui::log_report_summary() {
     _print_sum "$cnt_missing" "$C_ORANGE" "$SYMBOL_REPORT" "rpt_miss_sg" "rpt_miss_pl"
   fi
 
-  # 4. FAILED
-  _print_sum "$cnt_failed" "$C_ORANGE" "$SYMBOL_REPORT" "rpt_fail_sg" "rpt_fail_pl"
+  # 4. FAILED CHECKSUMS (Hash Mismatch)
+  _print_sum "$cnt_failed" "$C_RED" "$SYMBOL_REPORT" "rpt_fail_sg" "rpt_fail_pl"
 
-  # 5. BAD SIGNATURES
+  # 5. BAD SIGNATURES (GPG Fail)
   _print_sum "$cnt_bad_sig" "$C_ORANGE" "$SYMBOL_REPORT" "rpt_badsig_sg" "rpt_badsig_pl"
 
-  # 6. VERIFIED (SUCCESS)
+  # 6. GOOD SIGNATURES (GPG OK)
+  _print_sum "$cnt_signed" "$C_GREEN" "$SYMBOL_REPORT" "rpt_goodsig_sg" "rpt_goodsig_pl"
+
+  # 7. VERIFIED CHECKSUMS (Success)
   if [[ "$__CLI_QUIET" != "true" && "$cnt_ok" -gt 0 ]]; then
     local v_txt
-    local f_txt
     v_txt=$(ui::get_msg "rpt_verify")
-    f_txt=$(ui::get_msg "rpt_files")
-
-    local summary="${prefix}${C_ORANGE}${SYMBOL_REPORT}${C_R} $cnt_ok ${C_MSG2}${v_txt}${C_R} ${C_MSG2}${f_txt}${C_R}"
-
-    if [[ "$cnt_signed" -gt 0 ]]; then
-      local s_txt
-      s_txt="$(ui::fmt_msg "$(ui::get_msg "rpt_signed")" "$cnt_signed")"
-      summary="$summary (${C_GREENH}${s_txt}${C_R})"
-    fi
-    echo -e "$summary." >&2
+    echo -e "${prefix}${C_GREEN}${SYMBOL_REPORT}${C_R} $cnt_ok ${C_MSG2}${v_txt}${C_R}." >&2
   fi
 }
 
 # Public: Logs an info message to stderr.
-#
-# $1 - message - The string to log.
 ui::log_info() {
   if [[ "${__CLI_QUIET:-false}" == "false" ]]; then
     echo -e "${C_CYAN}${SYMBOL_INFO}$1${C_R}" >&2
@@ -399,35 +382,26 @@ ui::log_info() {
 }
 
 # Public: Logs a warning message to stderr.
-#
-# $1 - message - The string to log.
 ui::log_warning() {
   echo -e "${C_ORANGE}${SYMBOL_WARNING} $1${C_R}" >&2
 }
 
 # Public: Logs a critical error message to stderr.
-#
-# $1 - message - The string to log.
 ui::log_critical() {
   echo -e "${C_RED}${SYMBOL_CRITICAL} $1${C_R}" >&2
 }
 
 # Public: Logs a standard error message to stderr.
-#
-# $1 - message - The string to log.
 ui::log_error() {
   echo -e "${C_RED}${SYMBOL_ERROR} $1${C_R}" >&2
 }
 
 # Public: Logs a clipboard action message.
-#
-# $1 - message - The string to log.
 ui::log_clipboard() {
   echo -e "${C_CYANG} ${SYMBOL_CLIPB}$1${C_R}" >&2
 }
 
 # Public: Displays the version information and license.
-# Uses localized strings.
 ui::show_version() {
   echo -e "${C_BOLD}${APP_NAME}${C_R} ${C_CYAN}v${CHECKIT_VERSION}${C_R}"
   printf "Copyright (C) %s %s.\n" "$APP_YEAR" "$APP_AUTHOR"
@@ -439,7 +413,6 @@ ui::show_version() {
 }
 
 # Public: Displays the help menu with all available options.
-# Uses localized strings for section headers and descriptions.
 ui::show_help() {
   echo -e "${C_BOLD}${APP_NAME}${C_R} v${CHECKIT_VERSION}"
   ui::get_msg "desc"

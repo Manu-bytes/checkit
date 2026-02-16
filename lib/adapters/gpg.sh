@@ -151,20 +151,6 @@ gpg::verify_detached() {
   fi
 }
 
-# Public: Signs a file using Clear-Sign mode (Inline).
-#
-# $1 - file - The path to the file to sign.
-#
-# Returns EX_SUCCESS on success, EX_OPERATIONAL_ERROR on failure.
-gpg::sign() {
-  local file="$1"
-  if gpg --clearsign --output "${file}.asc" "$file"; then
-    echo "${file}.asc"
-    return "$EX_SUCCESS"
-  fi
-  return "$EX_OPERATIONAL_ERROR"
-}
-
 # Public: Signs data passed via stdin.
 #
 # $1 - content - The string content to sign.
