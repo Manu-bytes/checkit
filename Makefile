@@ -1,12 +1,26 @@
 # Makefile
-.PHONY: test
+.PHONY: test unit-test integration-test lint clean build install test-perl test-dist test-all
 
-# Path to the BATS executable (adjust if it is in another submodule folder)
+# Configurations
 BATS_BIN := bats
+BATS_FLAGS := --recursive
+HAS_COREUTILS := $(shell command -v sha256sum 2> /dev/null)
+HAS_PERL_SHA  := $(shell command -v shasum 2> /dev/null)
+TYPE_TEST ?= navite
+
+ifeq ($(TYPE_TEST),perl)
+	TEST_MSG := "✅ shasum (Perl) Test Suite completed."
+else ifeq ($(TYPE_TEST),dist-auto)
+	TEST_MSG := "✅ Standalone Binary (Auto-Detect) Test Suite completed."
+else ifeq ($(TYPE_TEST),dist-perl)
+	TEST_MSG := "✅ Standalone Binary (Forced Perl) Test Suite completed."
+else
+	TEST_MSG := "✅ Native Test Suite completed."
+endif
 
 # Linting with Shellcheck
 lint:
-	@echo "Running Shellcheck..."
+	@echo "🔍 Running Shellcheck..."
 	# Check the main binary
 	shellcheck -x bin/checkit
 	# Check all library files in src
@@ -14,13 +28,59 @@ lint:
 
 # Run Tests
 unit-test:
-	@echo "Running Unit Tests..."
-	@CHECKIT_MODE=ascii $(BATS_BIN) --recursive tests/unit
+	@echo "🧪 Running Unit Tests..."
+	@CHECKIT_MODE=ascii $(BATS_BIN) $(BATS_FLAGS) tests/unit
 
 integration-test:
-	@echo "Running Integration Tests..."
-	@CHECKIT_MODE=ascii $(BATS_BIN) --recursive tests/integration
+	@echo "🔗 Running Integration Tests..."
+	@CHECKIT_MODE=ascii $(BATS_BIN) $(BATS_FLAGS) tests/integration
 
 test: unit-test integration-test
-	@echo "Test suite completed"
+	@echo $(TEST_MSG)
 
+test-perl:
+ifneq ($(HAS_PERL_SHA),)
+	@echo "--------------------------------------------------"
+	@echo "🐫 Running Tests in Forced Perl Mode (shasum)..."
+	@echo "--------------------------------------------------"
+	@CHECKIT_FORCE_PERL=true $(MAKE) --no-print-directory test TYPE_TEST=perl
+else
+	@echo "⚠️  Skipping Perl Test: 'shasum' not found on this system."
+endif
+
+test-dist: build
+	@echo "--------------------------------------------------"
+	@echo "📦 [1/2] Testing Binary in (Auto-Detect Mode)..."
+	@echo "--------------------------------------------------"
+	@USE_DIST=true $(MAKE) --no-print-directory test TYPE_TEST=dist-auto
+	@echo ""
+ifneq ($(HAS_PERL_SHA),)
+	@echo "--------------------------------------------------"
+	@echo "📦 [2/2] Testing Binary in PERL mode..."
+	@echo "--------------------------------------------------"
+	@USE_DIST=true CHECKIT_FORCE_PERL=true $(MAKE) --no-print-directory test TYPE_TEST=dist-perl
+else
+	@echo "⚠️  Skipping Forced Perl Test: 'shasum' not found on this system."
+endif
+	@echo ""
+	@echo "🏆 DISTRIBUTABLE BINARY PASSED ALL CHECKS."
+
+# Run All Test
+test-all:
+	@$(MAKE) --no-print-directory test
+	@$(MAKE) --no-print-directory test-perl
+	@echo ""
+	@echo "🏅 ALL TEST SUITES PASSED (Native & Perl) 🏅"
+
+# Clean build artifacts
+clean:
+	@echo "🧹 Cleaning up..."
+	@rm -f dist/checkit > /dev/null 2>&1
+
+# Build standalone binary
+build: clean
+	@./build.sh
+
+# Install to system
+install: build
+	@sudo install -m 755 dist/checkit /usr/local/bin/checkit
