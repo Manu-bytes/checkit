@@ -97,9 +97,8 @@ ui::get_msg() {
     opt_all) echo "      --all            Generar hashes con todos los algoritmos seguros" ;;
     opt_sign) echo "  -s, --sign           Firmar la salida con GPG (defecto: clearsign)" ;;
     opt_detach) echo "      --detach-sign    Crear firma separada (requiere escribir a archivo)" ;;
-    opt_file) echo "  -f, --file <nombre>  Guardar checksums en archivo (defecto 'CHECKSUMS' si usa --detach-sign)" ;;
     opt_armor) echo "      --armor          Crear salida con armadura ASCII (.asc)" ;;
-    opt_out) echo "  -o, --output <arch>  Escribir resultado en archivo (ignora stdout)" ;;
+    opt_out) echo "  -o, --output <arch>  Escribe el resultado en un archivo (por defecto 'CHECKSUMS' con --detach-sign)" ;;
     opt_fmt) echo "      --format <fmt>   Formato de salida: text (gnu), bsd, json, xml" ;;
     opt_tag) echo "      --tag            Forzar salida estilo BSD (alias de --output bsd)" ;;
     opt_zero) echo "  -z, --zero           Terminar cada línea con NUL, no nueva línea" ;;
@@ -190,9 +189,8 @@ ui::get_msg() {
     opt_all) echo "      --all            Generate hashes using all safe algorithms" ;;
     opt_sign) echo "  -s, --sign           Sign the output using GPG (default: clearsign)" ;;
     opt_detach) echo "      --detach-sign    Create a detached signature (requires writing to file)" ;;
-    opt_file) echo "  -f, --file <name>    Save checksums to file (default 'CHECKSUMS' if using --detach-sign)" ;;
     opt_armor) echo "      --armor          Create ASCII armored output (.asc)" ;;
-    opt_out) echo "  -o, --output <file>  Write output to file (suppress stdout)" ;;
+    opt_out) echo "  -o, --output <file>  Write results to file instead of stdout (defaults to 'CHECKSUMS' with --detach-sign)" ;;
     opt_fmt) echo "      --format <fmt>   Select output format: text (gnu), bsd, json, xml" ;;
     opt_tag) echo "      --tag            Force BSD style output (alias for --output bsd)" ;;
     opt_zero) echo "  -z, --zero           End each output line with NUL, not newline" ;;
@@ -436,7 +434,6 @@ ui::show_help() {
   ui::get_msg "opt_all"
   ui::get_msg "opt_sign"
   ui::get_msg "opt_detach"
-  ui::get_msg "opt_file"
   ui::get_msg "opt_armor"
   ui::get_msg "opt_out"
   ui::get_msg "opt_fmt"
