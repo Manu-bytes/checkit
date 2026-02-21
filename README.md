@@ -142,11 +142,11 @@ detached signing.*
 ### 🎥 Video Examples
 
 **Create Mode Demonstration:**
-<video src=".github/assets/man-checkit-create.mp4" controls="controls" width="100%">
+<video src=".github/assets/man-checkit-create-compress.mp4" controls="controls" width="100%">
 Your browser does not support the video tag. </video>
 
 **Check Mode Demonstration:**
-<video src=".github/assets/man-checkit-check.mp4" controls="controls" width="100%">
+<video src=".github/assets/man-checkit-check-compress.mp4" controls="controls" width="100%">
 Your browser does not support the video tag. </video>
 
 ## 🛠Build and Installation
@@ -182,7 +182,7 @@ path:
 1. Clone the repository and navigate to the project root:
 
 ```Bash
-git clone [https://github.com/Manu-bytes/checkit.git](https://github.com/Manu-bytes/checkit.git)
+git clone https://github.com/Manu-bytes/checkit.git
 cd checkit
 ```
 
