@@ -107,3 +107,57 @@ setup() {
   run core::parse_line "Not a hash line at all"
   assert_failure
 }
+
+# --- Strategy 4: JSON Format ---
+
+@test "Parser: JSON format extraction" {
+  local hash="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  local line='    { "algorithm": "SHA256", "filename": "config.json", "hash": "'"$hash"'" }'
+
+  run core::parse_line "$line"
+
+  assert_success
+  # Algorithm must be normalized to lowercase
+  assert_output "sha256|$hash|config.json"
+}
+
+@test "Parser: JSON format with escaped characters in filename" {
+  local hash="d41d8cd98f00b204e9800998ecf8427e"
+  local line='{ "algorithm": "md5", "filename": "file \ name.txt", "hash": "'"$hash"'" }'
+
+  run core::parse_line "$line"
+
+  assert_success
+  assert_output "md5|$hash|file \ name.txt"
+}
+
+@test "Parser: JSON format structural elements are ignored" {
+  # The parser should reject lines that only contain brackets
+  run core::parse_line "["
+  assert_failure
+
+  run core::parse_line "  ]  "
+  assert_failure
+}
+
+# --- Strategy 5: XML Format ---
+
+@test "Parser: XML format extraction" {
+  local hash="5f78c5d32e22641d4017688198944585c5f8749d056321288c347f3a7556a422"
+  local line='  <file algorithm="SHA-256" name="system.iso">'"$hash"'</file>'
+
+  run core::parse_line "$line"
+
+  assert_success
+  # Algorithm must be normalized to lowercase
+  assert_output "sha-256|$hash|system.iso"
+}
+
+@test "Parser: XML format structural tags are ignored" {
+  # The parser should reject parent structural tags
+  run core::parse_line "<checksums>"
+  assert_failure
+
+  run core::parse_line "</checksums>"
+  assert_failure
+}

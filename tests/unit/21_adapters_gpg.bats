@@ -84,3 +84,87 @@ teardown() {
   assert_failure "$EX_OPERATIONAL_ERROR"
   assert_output --partial "No public key"
 }
+
+# --- Detached Signature Discovery ---
+
+@test "Adapter: gpg::find_detached_sig locates .asc extension" {
+  touch "${TEST_FILE}.asc"
+  run gpg::find_detached_sig "$TEST_FILE"
+  assert_success
+  assert_output "${TEST_FILE}.asc"
+  rm -f "${TEST_FILE}.asc"
+}
+
+@test "Adapter: gpg::find_detached_sig returns error if no signature exists" {
+  run gpg::find_detached_sig "$TEST_FILE"
+  assert_failure
+}
+
+# --- Detached Verification Logic ---
+
+@test "Adapter: gpg::verify_detached returns EX_SUCCESS on good signature" {
+  touch "${TEST_FILE}.asc"
+  export GPG_MOCK_STATUS="GOOD"
+
+  run gpg::verify_detached "$TEST_FILE"
+  assert_success
+  rm -f "${TEST_FILE}.asc"
+}
+
+@test "Adapter: gpg::verify_detached returns EX_SECURITY_FAIL on BAD signature" {
+  touch "${TEST_FILE}.asc"
+  export GPG_MOCK_STATUS="BAD"
+
+  run gpg::verify_detached "$TEST_FILE"
+  assert_failure "$EX_SECURITY_FAIL"
+  assert_output --partial "BAD signature"
+  rm -f "${TEST_FILE}.asc"
+}
+
+@test "Adapter: gpg::verify_detached fails if signature file is missing" {
+  # Ensure no .asc, .sig, or .gpg file exists for TEST_FILE
+  run gpg::verify_detached "$TEST_FILE"
+  assert_failure "$EX_OPERATIONAL_ERROR"
+}
+
+# --- Signing Logic ---
+
+@test "Adapter: gpg::sign_data uses clearsign by default" {
+  # Override mock locally to output received arguments
+  gpg() {
+    echo "$@"
+    return 0
+  }
+  export -f gpg
+
+  run gpg::sign_data "dummy_content" "" "false"
+  assert_success
+  assert_output --partial "--clearsign"
+}
+
+@test "Adapter: gpg::sign_data applies detach and armor flags" {
+  gpg() {
+    echo "$@"
+    return 0
+  }
+  export -f gpg
+
+  run gpg::sign_data "dummy_content" "detach" "true"
+  assert_success
+  assert_output --partial "--detach-sign"
+  assert_output --partial "--armor"
+}
+
+@test "Adapter: gpg::sign_file executes detached file signing" {
+  gpg() {
+    echo "$@"
+    return 0
+  }
+  export -f gpg
+
+  run gpg::sign_file "$TEST_FILE" "true"
+  assert_success
+  assert_output --partial "--detach-sign"
+  assert_output --partial "--armor"
+  assert_output --partial "$TEST_FILE"
+}
