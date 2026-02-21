@@ -82,5 +82,17 @@ build: clean
 	@./build.sh
 
 # Install to system
-install: build
+install:
+	@if [ ! -f dist/checkit ]; then \
+		echo -e "❌ \033[1;31mError: Compiled binary 'dist/checkit' not found.\033[0m"; \
+		echo "⚠️ Not compiled automatically during install for security reasons."; \
+		echo ""; \
+		echo "💡 Run one of the following steps first:"; \
+		echo -e "   \033[1;33mmake build\033[0m      -> Build only."; \
+		echo -e "   \033[1;33mmake test-dist\033[0m  -> Build and verify (recommended)."; \
+		echo ""; \
+		exit 1; \
+	fi
+	@echo "📦 # Installing checkit into /usr/local/bin..."
 	@sudo install -m 755 dist/checkit /usr/local/bin/checkit
+	@echo "✅ Installation completed successfully."

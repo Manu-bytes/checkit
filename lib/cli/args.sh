@@ -49,7 +49,7 @@ cli::print_usage() {
 #
 # Returns 0 on success, or EX_OPERATIONAL_ERROR (2) on parsing failure.
 cli::parse_args() {
-  # Reset globals to ensures clean state
+  # Reset globals to ensure clean state
   __CLI_MODE=""
   __CLI_ALGO="sha256"
   __CLI_ALGO_SET=false
@@ -63,6 +63,13 @@ cli::parse_args() {
   __CLI_IGNORE_MISSING=false
   __CLI_STRICT=false
   __CLI_WARN=false
+  __CLI_ALL_ALGOS=false
+  __CLI_SIGN=false
+  __CLI_ZERO=false
+  __CLI_OUTPUT_FMT="gnu"
+  __CLI_OUTPUT_FILE=""
+  __CLI_SIGN_MODE=""
+  __CLI_SIGN_ARMOR=false
 
   if [[ $# -eq 0 ]]; then
     ui::log_warning "$(ui::get_msg 'warn_arg_missing')"
@@ -77,9 +84,14 @@ cli::parse_args() {
       shift
       ;;
     -a | --algo)
-      __CLI_ALGO="$2"
+      # Check if $2 is missing or starts with another flag
+      if [[ -z "$2" || "$2" == -* ]]; then
+        shift 1
+      else
+        __CLI_ALGO="$2"
+        shift 2
+      fi
       __CLI_ALGO_SET=true
-      shift 2
       ;;
     -v | --verify-sign)
       __CLI_STRICT_SECURITY=true
@@ -123,10 +135,6 @@ cli::parse_args() {
       __CLI_SIGN=true
       shift
       ;;
-    -f | --file)
-      __CLI_OUTPUT_FILE="$2"
-      shift 2
-      ;;
     --armor)
       __CLI_SIGN_ARMOR=true
       shift
@@ -140,15 +148,21 @@ cli::parse_args() {
       shift
       ;;
     --format)
-      local fmt="$2"
-      if [[ "$fmt" =~ ^(text|gnu|bsd|json|xml)$ ]]; then
-        [[ "$fmt" == "text" ]] && fmt="gnu"
-        __CLI_OUTPUT_FMT="$fmt"
+      if [[ -z "$2" || "$2" == -* ]]; then
+        shift 1
       else
-        ui::log_error "$(ui::fmt_msg 'err_arg_fmt_invalid' "$fmt")"
-        return "$EX_OPERATIONAL_ERROR"
+        local fmt="$2"
+        # Validate allowed formats
+        if [[ "$fmt" =~ ^(text|gnu|bsd|json|xml)$ ]]; then
+          # Normalize "text" to "gnu"
+          [[ "$fmt" == "text" ]] && fmt="gnu"
+          __CLI_OUTPUT_FMT="$fmt"
+        else
+          ui::log_error "$(ui::fmt_msg 'err_arg_fmt_invalid' "$fmt")"
+          return "$EX_OPERATIONAL_ERROR"
+        fi
+        shift 2
       fi
-      shift 2
       ;;
     -o | --output)
       if [[ -n "$2" && "$2" != -* ]]; then

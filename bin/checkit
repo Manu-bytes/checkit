@@ -223,9 +223,12 @@ main() {
       output_buffer+=$'\n</checksums>'
     fi
 
-    # 5. Output Management (Write/Sign)
     if [[ "$__CLI_SIGN_MODE" == "detach" && -z "$__CLI_OUTPUT_FILE" ]]; then
-      __CLI_OUTPUT_FILE="CHECKSUMS"
+      if [[ "${#__CLI_FILES[@]}" -eq 1 && "${__CLI_ALL_ALGOS}" == "false" ]]; then
+        __CLI_OUTPUT_FILE="$(core::get_tag "${__CLI_ALGO}")SUMS"
+      else
+        __CLI_OUTPUT_FILE="CHECKSUMS"
+      fi
     fi
 
     # Case A: Detached Signature
