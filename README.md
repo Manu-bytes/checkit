@@ -142,12 +142,12 @@ detached signing.*
 ### 🎥 Video Examples
 
 **Create Mode Demonstration:**
-<video src=".github/assets/man-checkit-create-compress.mp4" controls="controls" width="100%">
-Your browser does not support the video tag. </video>
+
+https://github.com/user-attachments/assets/a65f4f7d-2255-4cd2-8def-36aecdc18e99
 
 **Check Mode Demonstration:**
-<video src=".github/assets/man-checkit-check-compress.mp4" controls="controls" width="100%">
-Your browser does not support the video tag. </video>
+
+https://github.com/user-attachments/assets/man-checkit-check-compress.mp4
 
 ## 🛠Build and Installation
 
