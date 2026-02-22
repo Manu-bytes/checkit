@@ -142,9 +142,11 @@ detached signing.*
 ### 🎥 Video Examples
 
 **Create Mode Demonstration:**
+
 https://github.com/user-attachments/assets/a65f4f7d-2255-4cd2-8def-36aecdc18e99
 
 **Check Mode Demonstration:**
+
 https://github.com/user-attachments/assets/7f1db436-f7b1-48ff-8e37-74262cd883ce
 
 ## 🛠Build and Installation
