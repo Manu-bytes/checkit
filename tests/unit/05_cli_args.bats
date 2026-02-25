@@ -98,3 +98,58 @@ setup() {
   cli::parse_args "file.txt" "--all"
   assert_equal "$__CLI_ALL_ALGOS" "true"
 }
+
+# --- Additional Flag Logic Tests ---
+
+@test "CLI: --ignore-missing sets ignore missing boolean" {
+  cli::parse_args "-c" "sums.txt" "--ignore-missing"
+  assert_equal "$__CLI_IGNORE_MISSING" "true"
+}
+
+@test "CLI: --strict sets strict mode boolean" {
+  cli::parse_args "-c" "sums.txt" "--strict"
+  assert_equal "$__CLI_STRICT" "true"
+}
+
+@test "CLI: --warn sets warning boolean" {
+  cli::parse_args "-c" "sums.txt" "--warn"
+  assert_equal "$__CLI_WARN" "true"
+}
+
+@test "CLI: --status sets status only boolean" {
+  cli::parse_args "-c" "sums.txt" "--status"
+  assert_equal "$__CLI_STATUS" "true"
+}
+
+@test "CLI: --zero sets null terminator boolean" {
+  cli::parse_args "file.txt" "--zero"
+  assert_equal "$__CLI_ZERO" "true"
+}
+
+@test "CLI: --tag forces BSD output format" {
+  cli::parse_args "file.txt" "--tag"
+  assert_equal "$__CLI_OUTPUT_FMT" "bsd"
+}
+
+# --- Output File Assignment & Validation ---
+
+@test "CLI: --output assigns target file correctly" {
+  cli::parse_args "file.txt" "--output" "custom_hashes.txt"
+  assert_equal "$__CLI_OUTPUT_FILE" "custom_hashes.txt"
+}
+
+@test "CLI: -o shortcut assigns target file correctly" {
+  cli::parse_args "file.txt" "-o" "custom_hashes.txt"
+  assert_equal "$__CLI_OUTPUT_FILE" "custom_hashes.txt"
+}
+
+@test "CLI: --output fails if filename is missing (end of args)" {
+  run cli::parse_args "file.txt" "--output"
+  assert_failure "$EX_OPERATIONAL_ERROR"
+}
+
+@test "CLI: --output fails if next argument is a flag" {
+  # Simulates passing a flag where a filename is expected
+  run cli::parse_args "file.txt" "--output" "--sign"
+  assert_failure "$EX_OPERATIONAL_ERROR"
+}
